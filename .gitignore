@@ -1,0 +1,3 @@
+.env/
+gigantic_dataset/*/__pycache__/
+wandb/
