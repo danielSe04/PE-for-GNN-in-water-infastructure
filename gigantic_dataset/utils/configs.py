@@ -466,6 +466,7 @@ class TrainConfig(AbstractConfig):
     norm_type: Literal["znorm", "minmax", "unused"] = "unused"  # normalization type. Support znorm| minmax|unused"
     norm_on: list[Literal["node", "edge", "label", "edge_label"]] = ["node"]
     task: Literal["supervised", "semi"] = "semi"  # current supporting task
+    positional_encoding: str = ""
     """###########################TRACKING EXPERIMENTS SETTINGS################################"""
     log_method: str = ""  # log method! Support wandb or ''
     # log_gradient: bool = False #flag indicates keeping track of gradient flow

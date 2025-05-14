@@ -89,9 +89,12 @@ class GidaV6(Dataset):
 
     class Root:
         def get_file_type(self, zip_file_path: str) -> str:
+            if not os.path.exists(zip_file_path):
+                print("Could not find path.")
             try:
                 zarr.open(store=zip_file_path, mode="r")
-            except Exception:
+            except Exception as e:
+                print(f"Failed to open dataset as zarr: {e}")
                 return "csv"
             return "zarr"
 
@@ -103,9 +106,11 @@ class GidaV6(Dataset):
         def __init__(self, name: str, zip_file_path: str, num_cpus: Optional[int] = None) -> None:
             self.file_type = self.get_file_type(zip_file_path)
             self.zip_file_path = zip_file_path
+            print("file type: ", self.file_type)
             self.name = name
             if self.file_type == "zarr":
                 self.root = zarr.open(store=zip_file_path, mode="r")
+                #self.root = zarr.open(store=ZipStore(zip_file_path, mode="r"), mode="r")
                 assert isinstance(self.root, zarr.Group)
                 self.attrs = self.root.attrs
                 self.array_keys: list[str] = list(self.root.array_keys())  # type:ignore

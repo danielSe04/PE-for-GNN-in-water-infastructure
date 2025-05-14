@@ -13,7 +13,8 @@ from typing import Any, Callable
 from torch import Tensor
 from torch_geometric.data import Dataset
 from gigantic_dataset.utils.configs import TrainConfig, GidaConfig
-from gigantic_dataset.core.train import train, eval, TrainOneEpoch, TestOneEpoch, WandbStartProfiler, SemiSingleForward
+from gigantic_dataset.core.train import train, eval, TrainOneEpoch, TestOneEpoch, WandbStartProfiler, SemiSingleForward, SemiSingleForwardPE
+from gigantic_dataset.utils.pe_utils import RWPE_Initializer
 
 from gigantic_dataset.utils.train_protos import (
     load_gida_datasets,
@@ -28,7 +29,7 @@ from gigantic_dataset.utils.train_utils import (
     get_default_metric_fn_collection,
     find_latest_files,
 )
-from gigantic_dataset.model.gatres import LoadGATRes
+from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE
 
 
 from torch_geometric.data import Data
@@ -69,6 +70,24 @@ def extract_dataset_name(gida_config: GidaConfig) -> str:
         dataset_name = f"{num_networks}wdns"
     return dataset_name
 
+def get_dataset_names(gida_config: GidaConfig) -> list[str]:
+    """
+    Helper function to export names for pe plots.
+    """
+    if len(gida_config.zip_file_paths) <= 0:
+        return []
+    names = []
+    for path in gida_config.zip_file_paths:
+        p = gida_config.zip_file_paths[0]
+        basename = osp.basename(p)
+        segments = basename.split("_")
+        if len(segments) >= 2:
+            names.append(segments[1])
+        else:
+            names.append(basename)
+    return names
+        
+
 
 def pressure_estimation(
     gida_yaml_path: str,
@@ -104,6 +123,7 @@ def pressure_estimation(
 
     # add function references, where we mix and match training code.
     dataset_name = extract_dataset_name(gida_config)
+    dataset_names = get_dataset_names(gida_config)
     func_ref = FuncRef(
         start_profiler_fn=partial(WandbStartProfiler(), dataset_name=dataset_name),
         forward_fn=SemiSingleForward(),
@@ -116,10 +136,23 @@ def pressure_estimation(
         load_datasets=partial(
             load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path
         ),
-        load_models=LoadGATRes(),
+        load_models=LoadModel(),
         load_optimizers=default_load_optimizers,
         load_scheduler=default_load_scheduler,
     )
+
+    pe_technique = train_config.positional_encoding
+    if pe_technique == "":
+        pass
+    elif pe_technique == "lspe-gen":
+        func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE)
+        func_ref.forward_fn=partial(SemiSingleForwardPE(), pe_initializer=RWPE_Initializer())
+    elif pe_technique == "lspe-geo":
+        raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+
+
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)
 
@@ -166,6 +199,7 @@ def pressure_estimation(
         models=models,
         train_metric_fn_dict=get_default_metric_fn_collection(prefix="train", task="semi"),
         val_metric_fn_dict=get_default_metric_fn_collection(prefix="val", task="semi"),
+        dataset_names=dataset_names
     )
     # temporarily comment for fast check
     # TODO: If you wish to switch wandb project, we must re-call start profiler fn and override the project name
@@ -216,6 +250,7 @@ def pressure_estimation_inference(
 
     # add function references, where we mix and match training code.
     dataset_name = extract_dataset_name(gida_config)
+    dataset_names = get_dataset_names(gida_config)
     func_ref = FuncRef(
         start_profiler_fn=partial(WandbStartProfiler(), dataset_name=dataset_name),
         forward_fn=SemiSingleForward(),
@@ -229,7 +264,7 @@ def pressure_estimation_inference(
             load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path
         ),
         # load_datasets=load_dask_datasets,
-        load_models=LoadGATRes(),
+        load_models=LoadModel(),
         load_optimizers=default_load_optimizers,
         load_scheduler=default_load_scheduler,
     )
@@ -271,4 +306,6 @@ def pressure_estimation_inference(
         datasets=[datasets[0]],
         models=models,
         test_metric_fn_dict=get_default_metric_fn_collection(prefix="test", task="semi"),
+        plot_pe=True,
+        dataset_names=dataset_names
     )

@@ -15,6 +15,7 @@ import math
 
 from torch.nn.modules import Module
 from torch.optim import Optimizer
+from gigantic_dataset.utils.pe_utils import PE_Initializer
 from gigantic_dataset.utils.auxil_v8 import pretty_print
 from gigantic_dataset.utils.train_utils import (
     generate_unique_name_from_config,
@@ -31,6 +32,7 @@ from torch_geometric.loader import DataLoader
 import torch
 import wandb
 from gigantic_dataset.utils.train_protos import StartProfilerProto, ForwardProto, TrainOneEpochProto, TestOneEpochProto, ConfigRef
+from gigantic_dataset.utils.pe_utils import plot_pe_wandb
 
 
 class WandbStartProfiler(StartProfilerProto):
@@ -41,7 +43,7 @@ class WandbStartProfiler(StartProfilerProto):
 
         my_dict = config.as_dict()
         my_dict["run_name"] = run_name
-
+        
         # start a new wandb run to track this script
         if config.log_method == "wandb":
             if wandb.run is not None:  # check if wandb is inititized
@@ -80,6 +82,29 @@ class SupervisedSingleForward(ForwardProto):
         return (y_true, y_pred, out)
 
 
+class SemiSingleForwardPE(ForwardProto):
+    def __call__(
+        self, models: list[Module], data: Data, batch_mask: torch.Tensor, pe_initializer: PE_Initializer, take_first_channel: bool = True, **kwargs: Any
+    ) -> tuple[Any, Any, Any | None, Any, Any, Any]:
+        assert data.x is not None
+        pe_dim = models[0].get_pe_dim()
+        pe = pe_initializer(edge_index=data.edge_index, num_nodes=len(data.x), pe_dim=pe_dim, batch=data.batch)
+        data.y = deepcopy(data.x)
+
+        data.x[batch_mask, 0] = 0
+        out, pe_out = models[0](x=data.x, edge_index=data.edge_index, pe=pe, batch=data.batch, edge_attr=data.edge_attr)
+        y_pred = apply_masks(out, [batch_mask])  # out[batch_mask] #type:ignore
+        y_true = data.y[batch_mask]  # type:ignore
+
+        pe_pred = apply_masks(pe_out, [batch_mask])
+        pe_true = pe[batch_mask]
+
+        if y_true.shape[-1] > 1 and take_first_channel:
+            y_true = y_true[..., 0]  # exclude non-judging channels
+            y_true.unsqueeze_(dim=-1)
+        
+        return (y_true, y_pred, out, pe_true, pe_pred, pe_out)
+
 class SemiSingleForward(ForwardProto):
     def __call__(
         self, models: list[Module], data: Data, batch_mask: torch.Tensor, take_first_channel: bool = True, **kwargs: Any
@@ -108,7 +133,7 @@ class TrainOneEpoch(TrainOneEpochProto):
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
         **kwargs: Any,
-    ) -> tuple[float, dict, Any]:
+    ) -> tuple[float, dict, Any, float, Any | None]:
         config = ConfigRef.config
         func_ref = ConfigRef.ref
         device = config.device if config.device == "cuda" and torch.cuda.is_available() else "cpu"
@@ -137,10 +162,20 @@ class TrainOneEpoch(TrainOneEpochProto):
             data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
             data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
 
-            y_true, y_pred, out = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
+            #TODO send geo-pe data to gpu here, if geo-pe is used
 
+            y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
+            
+            # Calculate loss
             tr_loss = criterion(y_pred, y_true)
-            tr_loss.backward()  # Derive gradients.
+            loss = tr_loss
+            pe_loss = float('nan')
+            pe_out = None
+            if len(pe) == 3:
+                pe_true, pe_pred, pe_out = pe
+                pe_loss = criterion(pe_true, pe_pred)
+                loss = tr_loss + 0.5*pe_loss #TODO make 0.5 (alpha) a hyperparameter
+            loss.backward()  # Derive gradients.
             [optimizer.step() for optimizer in optimizers]  # Update parameters based on gradients.
 
             with torch.no_grad():
@@ -154,7 +189,7 @@ class TrainOneEpoch(TrainOneEpochProto):
         with torch.no_grad():
             dividend = max(1, len_loader_dataset)
             metric_dict = {k: total_metric_dict[k] / dividend for k in total_metric_dict.keys()}
-            return total_loss / dividend, metric_dict, out
+            return total_loss / dividend, metric_dict, out, pe_loss, pe_out
 
 
 class TestOneEpoch(TestOneEpochProto):
@@ -164,8 +199,10 @@ class TestOneEpoch(TestOneEpochProto):
         loader: DataLoader,
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
+        plot_pe: bool = False,
+        dataset_names: list[str] | None = None,
         **kwargs: Any,
-    ) -> tuple[float, dict, Any]:
+    ) -> tuple[float, dict, Any, float, Any | None]:
         config = ConfigRef.config
         func_ref = ConfigRef.ref
         device = config.device if config.device == "cuda" and torch.cuda.is_available() else "cpu"
@@ -180,7 +217,7 @@ class TestOneEpoch(TestOneEpochProto):
             total_loss = 0
             total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
             len_loader_dataset = len(loader.dataset)  # type:ignore
-            for data in loader:
+            for i, data in enumerate(loader):
                 # assert data.edge_index.max() < data.num_nodes
 
                 batch_mask = generate_batch_mask(
@@ -196,7 +233,11 @@ class TestOneEpoch(TestOneEpochProto):
                 data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
                 data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
 
-                y_true, y_pred, out = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
+                y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
+                pe_out = None
+                if len(pe) == 3:
+                    pe_true, pe_pred, pe_out = pe
+                    pe_loss = criterion(pe_true, pe_pred)
 
                 val_loss = criterion(y_pred, y_true)
                 # update metrics
@@ -205,10 +246,12 @@ class TestOneEpoch(TestOneEpochProto):
                 for k, fn in metric_fn_dict.items():
                     computed_metric = fn(y_pred_rescaled, y_true_rescaled)
                     total_metric_dict[k] += computed_metric * data.num_graphs
+                if plot_pe and pe_out is not None:
+                    plot_pe_wandb(pe_out, dataset_names[i])  
 
             dividend = max(1, len_loader_dataset)
             metric_dict = {k: total_metric_dict[k] / dividend for k in total_metric_dict.keys()}
-            return total_loss / dividend, metric_dict, out
+            return total_loss / dividend, metric_dict, out, pe_loss, pe_out
 
 
 def train(
@@ -216,6 +259,7 @@ def train(
     datasets: list[Dataset],
     train_metric_fn_dict: dict[str, Callable],
     val_metric_fn_dict: dict[str, Callable],
+    dataset_names: list[str] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     sampling_strategy = kwargs.get("sampling_strategy", "batch")
@@ -246,7 +290,7 @@ def train(
 
     for epoch in range(1, config.epochs + 1):
         # print(f"Training @epoch {epoch}...")
-        tr_loss, tr_metric_dict, out = func_ref.train_one_epoch_fn(
+        tr_loss, tr_metric_dict, out, tr_loss_pe, _ = func_ref.train_one_epoch_fn(
             models=models,
             optimizers=optimizers,
             loader=train_loader,
@@ -255,11 +299,14 @@ def train(
             **kwargs,
         )
 
-        val_loss, val_metric_dict, _ = func_ref.test_one_epoch_fn(
+        plot_pe = (epoch == 1 or epoch == config.epochs)
+        val_loss, val_metric_dict, _, val_loss_pe, _ = func_ref.test_one_epoch_fn(
             models=models,
             loader=val_loader,
             criterion=criterion,
             metric_fn_dict=val_metric_fn_dict,
+            plot_pe=plot_pe,
+            dataset_names=dataset_names if not plot_pe else [name + f"-{epoch}" for name in dataset_names],
             **kwargs,
         )
 
@@ -273,6 +320,7 @@ def train(
                 optimizers_state_dict={i: optimizer.state_dict() if optimizer else None for i, optimizer in enumerate(optimizers)},
                 epoch=best_epoch,
                 loss=best_loss,
+                pe_loss=val_loss_pe,
                 val_metric_dict=best_metric_dict,
                 norm_type=config.norm_type,
             )
@@ -283,7 +331,9 @@ def train(
             print_metrics(
                 epoch=epoch,
                 tr_loss=tr_loss,
+                tr_loss_pe=tr_loss_pe,
                 val_loss=val_loss,
+                val_loss_pe=val_loss_pe,
                 tr_metric_dict=tr_metric_dict,
                 val_metric_dict=val_metric_dict,
             )
@@ -301,7 +351,9 @@ def train(
                 epoch=epoch,
                 commit=True,
                 train_loss=tr_loss,
+                train_loss_pe=tr_loss_pe,
                 val_loss=val_loss,
+                val_loss_pe=val_loss_pe,
                 best_loss=best_loss,
                 best_epoch=best_epoch,
                 tr_metric_dict=tr_metric_dict,
@@ -318,6 +370,8 @@ def eval(
     models: list[torch.nn.Module],
     datasets: list[Dataset],
     test_metric_fn_dict: dict[str, Callable],
+    plot_pe: bool = False,
+    dataset_names: list[str] | None = None,
     **kwargs: Any,
 ) -> Any | None:
     config = ConfigRef.config
@@ -337,18 +391,21 @@ def eval(
     print("Start time:", dt1)
     print("*" * 80)
 
-    test_loss, test_metric_dict, _ = func_ref.test_one_epoch_fn(
+    test_loss, test_metric_dict, _, pe_loss, _ = func_ref.test_one_epoch_fn(
         models=models,
         loader=test_loader,
         criterion=criterion,
         metric_fn_dict=test_metric_fn_dict,
         config=config,
+        plot_pe=plot_pe,
+        dataset_names=dataset_names if not plot_pe else [name + "-test" for name in dataset_names],
         **kwargs,
     )
 
     print_single_metrics(
         epoch=0,
         test_loss=test_loss,
+        pe_loss=pe_loss,
         test_metric_dict=test_metric_dict,
     )
 
@@ -357,6 +414,7 @@ def eval(
             epoch=0,
             commit=True,
             test_loss=test_loss,
+            pe_loss=pe_loss,
             best_epoch=best_epoch,
             test_metric_dict=test_metric_dict,
         )

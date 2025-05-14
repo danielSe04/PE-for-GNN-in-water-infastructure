@@ -31,6 +31,7 @@ from torch import arange
 import os
 import os.path as osp
 import glob
+import math
 
 
 def find_latest_files(folder_path: str, pattern: str) -> list[str]:
@@ -281,7 +282,7 @@ def print_single_metrics(epoch: int, **kwargs: Any) -> None:
     print(formatter)
 
 
-def print_metrics(epoch: int, tr_loss: float, val_loss: float, tr_metric_dict: dict, val_metric_dict: dict) -> None:
+def print_metrics(epoch: int, tr_loss: float, tr_loss_pe: float, val_loss: float, val_loss_pe: float, tr_metric_dict: dict, val_metric_dict: dict) -> None:
     """support pretty print string format
 
     Args:
@@ -301,7 +302,9 @@ def print_metrics(epoch: int, tr_loss: float, val_loss: float, tr_metric_dict: d
             metric_log += f"{k}: {v:.4f}, "
 
     formatter = f"Epoch: {epoch:03d}, train loss: {tr_loss:.4f},"
+    formatter += f"train loss (pe): {tr_loss_pe:.4f}," if not math.isnan(tr_loss_pe) else ""
     formatter += f"val_loss: {val_loss:.4f}," if val_loss else ""
+    formatter += f"val loss (pe): {val_loss_pe:.4f}," if not math.isnan(val_loss_pe) else ""
     formatter += f" {metric_log}"
     print(formatter)
 

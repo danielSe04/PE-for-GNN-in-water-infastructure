@@ -11,11 +11,12 @@ weight_decay: 0.00001
 epochs: 1000
 mask_rate: 0.95
 criterion: mse
-batch_size: 32  # this can be 120 in habrok
+batch_size: 120  # this can be 120 in habrok
 use_data_batch: false
 device: cuda
 norm_type:  znorm
 task: semi
+positional_encoding: ""
 log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
