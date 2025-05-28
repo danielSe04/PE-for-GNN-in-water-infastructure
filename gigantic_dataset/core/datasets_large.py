@@ -45,7 +45,7 @@ LARGE_NUMBER = 10000
 IndexType = Union[slice, Tensor, np.ndarray, Sequence]
 
 
-def parse2data(x: np.ndarray, edge_index: np.ndarray, edge_attr: Optional[np.ndarray], y: Optional[np.ndarray], edge_y: Optional[np.ndarray]) -> Data:
+def parse2data(x: np.ndarray, edge_index: np.ndarray, edge_attr: Optional[np.ndarray], y: Optional[np.ndarray], edge_y: Optional[np.ndarray], coordinates: Optional[np.ndarray]) -> Data:
     data_dict: dict[str, Any] = defaultdict(list)
     data_dict["edge_index"] = torch.as_tensor(edge_index, dtype=torch.long)
     data_dict["x"] = torch.as_tensor(x, dtype=torch.float)
@@ -55,9 +55,44 @@ def parse2data(x: np.ndarray, edge_index: np.ndarray, edge_attr: Optional[np.nda
         data_dict["y"] = torch.as_tensor(y, dtype=torch.float)
     if edge_y is not None:
         data_dict["edge_y"] = torch.as_tensor(edge_y, dtype=torch.float)
+    if coordinates is not None:
+        data_dict["coordinates"] = torch.as_tensor(coordinates, dtype=torch.float)
 
     data = Data.from_dict(data_dict)
     return data
+
+def get_dataset_name_from_zip_file_path(zip_file_path: str) -> str:
+    basename = os.path.basename(zip_file_path)
+    segments = basename.split("_")
+    if len(segments) >= 2:
+        return segments[1]
+    return basename
+
+def read_coordinates(file_path: str) -> np.ndarray:
+    assert os.path.isfile(file_path), f"Cannot load coordinates from file path {file_path}"
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+    
+    coords = []
+    in_coordinates = False
+    for line in lines:
+        line = line.strip()
+
+        if line.startswith("[COORDINATES]"):
+            in_coordinates = True
+            continue
+        
+        if in_coordinates:
+            if line.startswith(";") or not line: # Line does not contain coordintates
+                continue
+            if line.startswith("["): # Section has ended
+                break
+            parts = line.split()
+            if len(parts) == 3:
+                x = float(parts[1])
+                y = float(parts[2])
+                coords.append((x,y))
+    return np.array(coords)
 
 
 class GidaV6(Dataset):
@@ -106,7 +141,6 @@ class GidaV6(Dataset):
         def __init__(self, name: str, zip_file_path: str, num_cpus: Optional[int] = None) -> None:
             self.file_type = self.get_file_type(zip_file_path)
             self.zip_file_path = zip_file_path
-            print("file type: ", self.file_type)
             self.name = name
             if self.file_type == "zarr":
                 self.root = zarr.open(store=zip_file_path, mode="r")
@@ -133,6 +167,7 @@ class GidaV6(Dataset):
             self.edge_mask: Optional[np.ndarray] = None
             self.adj_mask: Optional[np.ndarray] = None
             self.edge_index: Optional[np.ndarray] = None
+            self.coordinates: Optional[np.ndarray] = None
             self.node_names: list[str] = []
             self.edge_names: list[str] = []
             self.num_cpus: Optional[int] = num_cpus
@@ -712,6 +747,13 @@ class GidaV6(Dataset):
                 edge_index = np.zeros([2, 0], dtype=np.int_)  # type:ignore
 
             root.edge_index = edge_index
+            #print("Edge index in root:", root.edge_index)
+
+            coords_file_name = get_dataset_name_from_zip_file_path(zip_file_path)
+            #TODO make this path variable
+            root.coordinates = read_coordinates(os.path.join("coords", coords_file_name + ".inp"))
+            # print("Coordinates after reading:", root.coordinates.shape)
+            # print(root.coordinates)
 
         self._is_init_root = True
 
@@ -1005,12 +1047,16 @@ class GidaV6(Dataset):
                 if counter >= batch_size:
                     break
                 x = node_array[i]
+                #print("size of x at get:", x.shape)
                 edge_attr = edge_array[i] if edge_array is not None else None
                 y = label_array[i] if label_array is not None else None
                 edge_y = edge_label_array[i] if edge_label_array is not None else None
                 edge_index: np.ndarray = root.edge_index  # self._roots[self._network_map[i]].edge_index  # type:ignore
+                node_coordinates: np.ndarray = root.coordinates
+                # print("size of coordinates at get:", node_coordinates.shape)
+                # print(edge_index)
 
-                dat = parse2data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, edge_y=edge_y)
+                dat = parse2data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, edge_y=edge_y, coordinates=node_coordinates)
                 batch.append(dat)
                 counter += 1
         assert counter == batch_size

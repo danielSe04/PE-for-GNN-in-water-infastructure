@@ -466,7 +466,16 @@ class TrainConfig(AbstractConfig):
     norm_type: Literal["znorm", "minmax", "unused"] = "unused"  # normalization type. Support znorm| minmax|unused"
     norm_on: list[Literal["node", "edge", "label", "edge_label"]] = ["node"]
     task: Literal["supervised", "semi"] = "semi"  # current supporting task
-    positional_encoding: str = ""
+    """########### Positional encoding settings ###########""" #TODO refactor this into something like ModelConfig
+    positional_encoding: Literal["", "lspe", "pe-gnn"] = "" #Turned off by default
+    pe_init: Literal["rw", "geo"] = "rw" #
+    pe_dim: int = 0
+    pe_task: Literal["supervised", "semi"] = "semi"
+    pe_criterion: Literal["mse", "laplacian", "morans-i"] = "mse" # Only use laplacia on fully supervised pe
+    pe_loss_alpha: int = 0
+    subgraphing: bool = False # Decide whether knn subgraphing is used
+    k: int = 5 # For knn subgraphing
+    batch_size_subgraph: int = 1024
     """###########################TRACKING EXPERIMENTS SETTINGS################################"""
     log_method: str = ""  # log method! Support wandb or ''
     # log_gradient: bool = False #flag indicates keeping track of gradient flow

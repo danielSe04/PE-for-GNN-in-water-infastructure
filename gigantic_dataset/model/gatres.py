@@ -23,7 +23,7 @@ import torch
 from torch.nn import Module
 
 class GResBlockMeanConv(Module):
-    def __init__(self, in_dim, out_dim, hc, pe_dim = 0, activation_func: Callable[[Tensor], Tensor] = F.relu):
+    def __init__(self, in_dim, out_dim, hc, activation_func: Callable[[Tensor], Tensor] = F.relu):
         super(GResBlockMeanConv, self).__init__()
 
         # self.norm1 = BatchNorm(in_channels=in_dim)
@@ -31,12 +31,12 @@ class GResBlockMeanConv(Module):
         self.conv2 = GATConv(hc * 2, out_dim, 1, concat=False)
         self.mean_conv = SimpleConv(aggr="mean")
         self.activation_func = activation_func
-        self.feature_dim = in_dim - pe_dim
+        self.out_dim = out_dim
 
     def forward(self, x, edge_index, edge_attr=None, batch: Tensor | None = None) -> Tensor:
         # x = self.norm1(x)
         x_0 = clone(x) # Take only the non-pe part
-        x_0 = x_0[:, : self.feature_dim]
+        x_0 = x_0[:, : self.out_dim]
         x = self.activation_func(self.conv1(x, edge_index, edge_attr))
         x = self.conv2(x, edge_index, edge_attr)
         x = self.mean_conv(x, edge_index) + x_0
@@ -45,42 +45,48 @@ class GResBlockMeanConv(Module):
 
 
 class GATResMeanConv(Module):
-    def __init__(self, in_dim: int, out_dim: int, name: str = "GATResMeanConv", num_blocks: int = 5, nc: int = 32, pe_dim: int = 0):
+    def __init__(self, in_dim: int, out_dim: int, name: str = "GATResMeanConv", num_blocks: int = 5, nc: int = 32, pe_dim: int = 0, concat_pe_per_layer: bool = False):
         super(GATResMeanConv, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.num_blocks = num_blocks
         self.nc = nc
         self.num_blocks = num_blocks
+        self.pe_dim = pe_dim
 
         self.lin0 = Linear(in_dim, nc)
         self.blocks = ModuleList()
         self.name = name
+        if concat_pe_per_layer:
+            gat_out_dim = nc
+        else: 
+            gat_out_dim = nc+pe_dim
         for _ in range(self.num_blocks):
-            block = GResBlockMeanConv(in_dim=nc+pe_dim, out_dim=nc, hc=nc+pe_dim, pe_dim=pe_dim)
+            block = GResBlockMeanConv(in_dim=nc+pe_dim, out_dim=gat_out_dim, hc=nc+pe_dim)
             self.blocks.append(block)
 
-        self.lin1 = Linear(nc, out_dim)
+        self.lin1 = Linear(gat_out_dim, out_dim)
 
     def forward(self, x: Tensor, edge_index: Tensor, batch: Tensor | None = None, edge_attr: Tensor | None = None) -> Tensor:
         x = self.lin0(x)
-
         for i in range(self.num_blocks):
             x = self.blocks[i](x, edge_index, edge_attr, batch)
-
         x = self.lin1(x)
         return x
     
+    def get_pe_dim(self) -> int:
+        return self.pe_dim
+    
+    
 class GATResMeanConvLSPE(GATResMeanConv):
-    def __init__(self, in_dim: int, out_dim: int, name: str = "GATResMeanConv", num_blocks: int = 5, nc: int = 32):
+    def __init__(self, in_dim: int, out_dim: int, name: str = "GATResMeanConvLSPE", num_blocks: int = 5, nc: int = 32, pe_dim: int = 20):
         #TODO determine the correct dimension for the positional encoding
-        self.pe_dim = 20
-        super(GATResMeanConvLSPE, self).__init__(in_dim=in_dim, out_dim=out_dim, name=name, num_blocks=num_blocks, nc=nc, pe_dim=self.pe_dim)
+        super(GATResMeanConvLSPE, self).__init__(in_dim=in_dim, out_dim=out_dim, name=name, num_blocks=num_blocks, nc=nc, pe_dim=pe_dim, concat_pe_per_layer=True)
         self.lin0_pe = Linear(self.pe_dim, self.pe_dim)
         self.blocks_pe = ModuleList()
         for _ in range(self.num_blocks):
             # The positional encoding uses tanh and not relu to allow negative coordinates
-            block = GResBlockMeanConv(self.pe_dim, self.pe_dim, self.pe_dim, activation_func=torch.tanh)
+            block = GResBlockMeanConv(in_dim=self.pe_dim, out_dim=self.pe_dim, hc=self.pe_dim, activation_func=torch.tanh)
             self.blocks_pe.append(block)
         self.lin1_pe = Linear(self.pe_dim, self.pe_dim)
 
@@ -97,9 +103,17 @@ class GATResMeanConvLSPE(GATResMeanConv):
         x = self.lin1(x)
         #pe = self.lin1_pe(pe)
         return x, pe
+
+class PE_GATResMeanConv(GATResMeanConv):
+    def forward(self, x: Tensor, edge_index: Tensor, pe: Tensor, batch: Tensor | None = None, edge_attr: Tensor | None = None) -> Tensor:
+        x = self.lin0(x)
+        x = torch.cat((x,pe), -1)
+        for i in range(self.num_blocks):
+            x = self.blocks[i](x, edge_index, edge_attr, batch)
+        x = self.lin1(x)
+        return x
     
-    def get_pe_dim(self) -> int:
-        return self.pe_dim
+
     
 class LoadModel(LoadModelProto):
     def __call__(
@@ -109,6 +123,7 @@ class LoadModel(LoadModelProto):
         model_class: Module = GATResMeanConv,
         load_weights_from: Literal["model_config", "train_config"] = "train_config",
         do_load_best: bool = True,
+        pe_dim: int = 0,
         **kwds: Any,
     ) -> list[Module]:
         train_config = ConfigRef.config
@@ -122,6 +137,7 @@ class LoadModel(LoadModelProto):
                 num_blocks=model_config.num_layers,
                 in_dim=in_dim,
                 out_dim=out_node_dim,
+                pe_dim=pe_dim
             )
             setattr(model, "name", model_config.name)
             if load_weights_from == "model_config" and model_config.weight_path != "" and os.path.exists(model_config.weight_path):

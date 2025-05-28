@@ -15,7 +15,7 @@ import math
 
 from torch.nn.modules import Module
 from torch.optim import Optimizer
-from gigantic_dataset.utils.pe_utils import PE_Initializer
+from gigantic_dataset.model.pe_initializers import PE_Initializer
 from gigantic_dataset.utils.auxil_v8 import pretty_print
 from gigantic_dataset.utils.train_utils import (
     generate_unique_name_from_config,
@@ -32,7 +32,7 @@ from torch_geometric.loader import DataLoader
 import torch
 import wandb
 from gigantic_dataset.utils.train_protos import StartProfilerProto, ForwardProto, TrainOneEpochProto, TestOneEpochProto, ConfigRef
-from gigantic_dataset.utils.pe_utils import plot_pe_wandb
+from gigantic_dataset.utils.pe_utils import plot_pe_wandb, calculate_pe_loss, lw_tensor_local_moran, calculate_subgraph
 
 
 class WandbStartProfiler(StartProfilerProto):
@@ -83,21 +83,30 @@ class SupervisedSingleForward(ForwardProto):
 
 
 class SemiSingleForwardPE(ForwardProto):
+    def __init__(self, pe_initializer: PE_Initializer, pe_supervised: bool = False):
+        self.pe_initializer = pe_initializer
+        self.pe_supervised = pe_supervised
+
     def __call__(
-        self, models: list[Module], data: Data, batch_mask: torch.Tensor, pe_initializer: PE_Initializer, take_first_channel: bool = True, **kwargs: Any
+        self, models: list[Module], data: Data, batch_mask: torch.Tensor, take_first_channel: bool = True, **kwargs: Any
     ) -> tuple[Any, Any, Any | None, Any, Any, Any]:
         assert data.x is not None
         pe_dim = models[0].get_pe_dim()
-        pe = pe_initializer(edge_index=data.edge_index, num_nodes=len(data.x), pe_dim=pe_dim, batch=data.batch)
+        pe = self.pe_initializer(edge_index=data.edge_index, num_nodes=len(data.x), pe_dim=pe_dim, batch=data.batch, geo_coords=data.coordinates)
         data.y = deepcopy(data.x)
 
         data.x[batch_mask, 0] = 0
+        if not self.pe_supervised:
+            print("Positional encoding is semi-supervised")
+            pe[batch_mask] = 0
         out, pe_out = models[0](x=data.x, edge_index=data.edge_index, pe=pe, batch=data.batch, edge_attr=data.edge_attr)
         y_pred = apply_masks(out, [batch_mask])  # out[batch_mask] #type:ignore
         y_true = data.y[batch_mask]  # type:ignore
-
-        pe_pred = apply_masks(pe_out, [batch_mask])
-        pe_true = pe[batch_mask]
+        pe_pred = pe_out
+        pe_true = pe if not ConfigRef.config.pe_criterion == "morans-i" else lw_tensor_local_moran(y=pe, w_sparse=data.edge_index).to(pe.device)
+        if not self.pe_supervised:
+            pe_pred = apply_masks(pe_out, [batch_mask])
+            pe_true = pe[batch_mask]
 
         if y_true.shape[-1] > 1 and take_first_channel:
             y_true = y_true[..., 0]  # exclude non-judging channels
@@ -149,6 +158,8 @@ class TrainOneEpoch(TrainOneEpochProto):
 
         for data in loader:  # Iterate in batches over the training dataset.
             [optimizer.zero_grad() for optimizer in optimizers]  # Clear gradients.
+            if config.subgraphing:
+                data = calculate_subgraph(data, k=config.k, batch_size=config.batch_size_subgraph)
 
             num_nodes = torch.unique(data.batch, return_counts=True)[1]
             batch_mask = generate_batch_mask(num_nodes=num_nodes, edge_index=data.edge_index, mask_rate=mask_rate, required_mask=None)
@@ -161,8 +172,7 @@ class TrainOneEpoch(TrainOneEpochProto):
             data.edge_attr = data.edge_attr.to(device, non_blocking=non_blocking) if "edge_attr" in data else None
             data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
             data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
-
-            #TODO send geo-pe data to gpu here, if geo-pe is used
+            data.coordinates = data.coordinates.to(device, non_blocking=non_blocking) if "coordinates" in data else None
 
             y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
             
@@ -173,8 +183,8 @@ class TrainOneEpoch(TrainOneEpochProto):
             pe_out = None
             if len(pe) == 3:
                 pe_true, pe_pred, pe_out = pe
-                pe_loss = criterion(pe_true, pe_pred)
-                loss = tr_loss + 0.5*pe_loss #TODO make 0.5 (alpha) a hyperparameter
+                pe_loss = calculate_pe_loss(pe_true, pe_pred, edge_index=data.edge_index)
+                loss = tr_loss + config.pe_loss_alpha*pe_loss
             loss.backward()  # Derive gradients.
             [optimizer.step() for optimizer in optimizers]  # Update parameters based on gradients.
 
@@ -218,6 +228,7 @@ class TestOneEpoch(TestOneEpochProto):
             total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
             len_loader_dataset = len(loader.dataset)  # type:ignore
             for i, data in enumerate(loader):
+                
                 # assert data.edge_index.max() < data.num_nodes
 
                 batch_mask = generate_batch_mask(
@@ -232,9 +243,11 @@ class TestOneEpoch(TestOneEpochProto):
                 data.edge_attr = data.edge_attr.to(device, non_blocking=non_blocking) if "edge_attr" in data else None
                 data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
                 data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
+                data.coordinates = data.coordinates.to(device, non_blocking=non_blocking) if "coordinates" in data else None
 
                 y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
                 pe_out = None
+                pe_loss = float('nan')
                 if len(pe) == 3:
                     pe_true, pe_pred, pe_out = pe
                     pe_loss = criterion(pe_true, pe_pred)
@@ -247,7 +260,11 @@ class TestOneEpoch(TestOneEpochProto):
                     computed_metric = fn(y_pred_rescaled, y_true_rescaled)
                     total_metric_dict[k] += computed_metric * data.num_graphs
                 if plot_pe and pe_out is not None:
-                    plot_pe_wandb(pe_out, dataset_names[i])  
+                    if i < len(dataset_names):
+                        plot_pe_wandb(pe=pe_out, edge_index=data.edge_index, plot_name=dataset_names[i])
+                    else:
+                        print("Error: More datasets than dataset names. Defaulting to standard dataset name.")
+                        plot_pe_wandb(pe=pe_out, edge_index=data.edge_index, plot_name=f"Default_{i}")
 
             dividend = max(1, len_loader_dataset)
             metric_dict = {k: total_metric_dict[k] / dividend for k in total_metric_dict.keys()}

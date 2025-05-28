@@ -14,7 +14,7 @@ from torch import Tensor
 from torch_geometric.data import Dataset
 from gigantic_dataset.utils.configs import TrainConfig, GidaConfig
 from gigantic_dataset.core.train import train, eval, TrainOneEpoch, TestOneEpoch, WandbStartProfiler, SemiSingleForward, SemiSingleForwardPE
-from gigantic_dataset.utils.pe_utils import RWPE_Initializer
+from gigantic_dataset.model.pe_initializers import RWPE_Initializer, GeoPE_Initializer
 
 from gigantic_dataset.utils.train_protos import (
     load_gida_datasets,
@@ -29,7 +29,7 @@ from gigantic_dataset.utils.train_utils import (
     get_default_metric_fn_collection,
     find_latest_files,
 )
-from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE
+from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE, PE_GATResMeanConv
 
 
 from torch_geometric.data import Data
@@ -78,8 +78,7 @@ def get_dataset_names(gida_config: GidaConfig) -> list[str]:
         return []
     names = []
     for path in gida_config.zip_file_paths:
-        p = gida_config.zip_file_paths[0]
-        basename = osp.basename(p)
+        basename = osp.basename(path)
         segments = basename.split("_")
         if len(segments) >= 2:
             names.append(segments[1])
@@ -87,8 +86,6 @@ def get_dataset_names(gida_config: GidaConfig) -> list[str]:
             names.append(basename)
     return names
         
-
-
 def pressure_estimation(
     gida_yaml_path: str,
     train_yaml_path: str,
@@ -141,17 +138,26 @@ def pressure_estimation(
         load_scheduler=default_load_scheduler,
     )
 
+    # Modify function references based on the positional encoding specified, if pe is used
     pe_technique = train_config.positional_encoding
+    pe_init = train_config.pe_init
     if pe_technique == "":
         pass
-    elif pe_technique == "lspe-gen":
-        func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE)
-        func_ref.forward_fn=partial(SemiSingleForwardPE(), pe_initializer=RWPE_Initializer())
-    elif pe_technique == "lspe-geo":
-        raise NotImplementedError()
     else:
-        raise NotImplementedError()
-
+        if pe_technique == "lspe":
+            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
+        elif pe_technique == "pe-gnn":
+            func_ref.load_models = partial(LoadModel(), model_class=PE_GATResMeanConv, pe_dim=train_config.pe_dim)
+        else:
+            raise NotImplementedError()
+        if pe_init == "rw":
+            pe_initializer = RWPE_Initializer()
+        elif pe_init == "geo":
+            pe_initializer = GeoPE_Initializer()
+        else:
+            raise NotImplementedError()
+        
+        func_ref.forward_fn = SemiSingleForwardPE(pe_initializer=pe_initializer, pe_supervised=(train_config.pe_task == "supervised"))
 
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)
@@ -242,8 +248,8 @@ def pressure_estimation_inference(
     train_config = TrainConfig()
     train_config._parsed = True
     train_config._from_yaml(train_yaml_path, unsafe_load=True)
-    if save_path != "":
-        train_config.save_path = save_path
+    # if save_path != "":
+    #     train_config.save_path = save_path
 
     # to flush to terminal
     setattr(train_config, "data", gida_config.as_dict())
@@ -268,9 +274,31 @@ def pressure_estimation_inference(
         load_optimizers=default_load_optimizers,
         load_scheduler=default_load_scheduler,
     )
+
+    # Modify function references based on the positional encoding specified, if pe is used
+    pe_technique = train_config.positional_encoding
+    pe_init = train_config.pe_init
+    if pe_technique == "":
+        pass
+    else:
+        if pe_technique == "lspe":
+            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
+        elif pe_technique == "pe-gnn":
+            func_ref.load_models = partial(LoadModel(), model_class=PE_GATResMeanConv, pe_dim=train_config.pe_dim)
+        else:
+            raise NotImplementedError()
+        if pe_init == "rw":
+            pe_initializer = RWPE_Initializer()
+        elif pe_init == "geo":
+            pe_initializer = GeoPE_Initializer()
+        else:
+            raise NotImplementedError()
+        
+        func_ref.forward_fn = SemiSingleForwardPE(pe_initializer=pe_initializer, pe_supervised=(train_config.pe_task == "supervised"))
+
+
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)
-
     # we first load dataset
     datasets: list[Dataset] = func_ref.load_datasets(gida_config)
     print(f"len={datasets[0].len()}")
