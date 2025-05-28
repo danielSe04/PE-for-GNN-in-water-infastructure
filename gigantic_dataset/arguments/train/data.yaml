@@ -1,6 +1,6 @@
 zip_file_paths:
 #- '/scratch/hb-gida/data_v3/simgen_19_Pipe_System_20241101_1823.zip'
-#- '/scratch/hb-gida/data_v3/simgen_Anytown_20241118_1026.zip'
+- '/scratch/hb-gida/data_v3/simgen_Anytown_20241118_1026.zip'
 #- '/scratch/hb-gida/data_v3/simgen_CTOWN_20241104_1719-13694886.zip'
 #- '/scratch/hb-gida/data_v3/simgen_d-town_20241104_1441-13693123.zip'
 #- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
@@ -37,8 +37,7 @@ zip_file_paths:
 #- '/scratch/hb-gida/data_v3/simgen_ky8_20241120_230_20241104_175.zip'
 #- '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
 
-- "/home/andres/Dropbox/PhD Smart Environments - RUG/ExternalProjects/WDN_datasets/datasets/data_v3/24hours/simgen_CTOWN_20240921_1603.zip"
-- "/home/andres/Dropbox/PhD Smart Environments - RUG/ExternalProjects/WDN_datasets/datasets/data_v3/24hours/simgen_FFCL-1_20240909_2135.zip"
+#- '/scratch/simgen_Anytown_20240524_1202_csvdir_20240527_1205.zip'
 
 node_attrs:
 - pressure
@@ -51,7 +50,7 @@ edge_attrs: []
 label_attrs: []
 edge_label_attrs: []
 input_paths: []
-num_records: 1000 #this number will be divided into 60%train-20%val-20%test
+num_records: 100 #this number will be divided into 60%train-20%val-20%test
 chunk_limit: 5
 selected_snapshots: null
 verbose: false
