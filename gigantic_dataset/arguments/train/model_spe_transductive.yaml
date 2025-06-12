@@ -6,24 +6,24 @@ model_configs:
     name: gatres
     act: relu # unfunctional
     has_final_linear: false # unfunctional
-lr: 0.00001
+lr: 0.0005
 weight_decay: 0.00001
-epochs: 200
+epochs: 1000
 mask_rate: 0.95
 criterion: mse
-batch_size: 2048  # this can be 120 in habrok
+batch_size: 128  # this can be 120 in habrok
 use_data_batch: false
 device: cuda
 norm_type:  znorm
 task: semi
-positional_encoding: lspe
-pe_init: "rw"
+positional_encoding: concat
+pe_init: "spe"
 pe_dim: 20
-pe_task: supervised
-pe_criterion: laplacian
+pe_task: semi
+pe_criterion: mse
 pe_loss_alpha: 0.5
 log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe_inductive'  # to distinguish two wandb runs
+run_prefix: 'spe-transductive'  # to distinguish two wandb runs

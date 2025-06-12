@@ -23,10 +23,11 @@ split_set: all
 skip_nodes_list: []
 skip_types_list: []
 unstackable_pad_value: 0.0
-bypass_skip_names_in_config: false
+bypass_skip_names_in_config: true
 do_lazy: false
 overwatch: false
 batch_axis_choice: snapshot
 do_cache: false # set True if your RAM can handle the whole array.
 subset_shuffle: true
 split_per_network: true
+sampling_strategy: "random"
