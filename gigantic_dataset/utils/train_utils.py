@@ -271,8 +271,10 @@ def get_default_metric_fn_collection(prefix: str, task: Literal["supervised", "s
     return metric_fn_dict
 
 
-def print_single_metrics(epoch: int, **kwargs: Any) -> None:
+def print_single_metrics(epoch: int, dataset_name: str = "", **kwargs: Any) -> None:
     formatter = f"Epoch: {epoch:03}, "  # f'Epoch: {epoch:0.3d}'
+    if dataset_name != "":
+        formatter += f"{dataset_name}, "
     for k, v in kwargs.items():
         if isinstance(v, dict):
             for sk, sv in v.items():

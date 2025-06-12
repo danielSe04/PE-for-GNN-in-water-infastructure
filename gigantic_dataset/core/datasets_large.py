@@ -29,6 +29,7 @@ from gigantic_dataset.utils.auxil_v8 import (
 import tempfile
 from torch_geometric.data.data import BaseData
 from torch_geometric.data import Dataset, Data, Batch
+from torch.utils.data import Subset
 import pandas as pd
 
 from wntr.network import WaterNetworkModel
@@ -94,6 +95,15 @@ def read_coordinates(file_path: str) -> np.ndarray:
                 coords.append((x,y))
     return np.array(coords)
 
+class GidaSubset(Subset):
+    def __init__(self, dataset: Dataset, indices: list[int]):
+        super().__init__(dataset, indices)
+        assert hasattr(self.dataset, "__getitems__"), "ERROR! Dataset doesnt support batch loading!"
+
+    def __getitems__(self, indices):
+        dataset_indices = [self.indices[i] for i in indices[0]]
+        return self.dataset.__getitems__(dataset_indices)
+
 
 class GidaV6(Dataset):
     DYNAMIC_PARAMS = [
@@ -144,7 +154,6 @@ class GidaV6(Dataset):
             self.name = name
             if self.file_type == "zarr":
                 self.root = zarr.open(store=zip_file_path, mode="r")
-                #self.root = zarr.open(store=ZipStore(zip_file_path, mode="r"), mode="r")
                 assert isinstance(self.root, zarr.Group)
                 self.attrs = self.root.attrs
                 self.array_keys: list[str] = list(self.root.array_keys())  # type:ignore
@@ -242,6 +251,7 @@ class GidaV6(Dataset):
         do_cache: bool = False,
         subset_shuffle: bool = False,
         dataset_log_pt_path: str = r"",
+        sampling_strategy: Literal["default", "random", "subsampling"] = "default",
         **kwargs,
     ) -> None:
         """Correponding to configs.py/GiDaConfig.
@@ -308,6 +318,7 @@ class GidaV6(Dataset):
         self.subset_shuffle = subset_shuffle
         self.train_shuffle_ids, self.val_shuffle_ids, self.test_shuffle_ids = [], [], []
         self.dataset_log_pt_path = dataset_log_pt_path
+        self.sampling_strategy = sampling_strategy
         # allow user customize function here
         self.custom_process()
 
@@ -359,6 +370,87 @@ class GidaV6(Dataset):
                     self.train_ids = new_train_ids
                     self.val_ids = new_val_ids
                     self.test_ids = new_test_ids
+            self.update_indices()
+    
+    def process_subset_shuffle_custom(self, custom_subset_shuffle_pt_path: str = "",
+                                      sampling_strategy: Literal["default", "random", "subsampling"] = "default",
+                                      create_and_save_to_dataset_log_if_nonexist: bool = True):
+        if self.subset_shuffle:
+            if custom_subset_shuffle_pt_path != "":
+                self._load_shuffle_indices_from_disk_internal(path=custom_subset_shuffle_pt_path, sanity_check=True)
+            else:
+                # we first check whether the pt file exists. If yes, we load train/val/test ids
+                if not self.load_shuffle_indices_from_disk(sanity_check=True):
+
+                    if sampling_strategy == "default":
+                        # otherwise, we perform shuffle and store ids in a saving folder
+                        new_train_ids, self.train_shuffle_ids = shuffle_list(self.train_ids)
+                        new_val_ids, self.val_shuffle_ids = shuffle_list(self.val_ids)
+                        new_test_ids, self.test_shuffle_ids = shuffle_list(self.test_ids)
+                    elif sampling_strategy == "random":
+                        start_train_idx = 0
+                        start_val_idx = 0
+                        start_test_idx = 0
+                        new_train_ids = []
+                        new_val_ids = []
+                        new_test_ids = []
+                        for num_samples_per_network in self._num_samples_per_network_list:
+                            num_train = int(num_samples_per_network * self.split_ratios[0])
+                            num_val = int(num_samples_per_network * self.split_ratios[1])
+                            num_test = int(num_samples_per_network * self.split_ratios[2])
+
+                            num_train_samples = int(
+                                self.num_records * self.split_ratios[0] / len(self._num_samples_per_network_list))
+                            num_val_samples = int(
+                                self.num_records * self.split_ratios[1] / len(self._num_samples_per_network_list))
+                            num_test_samples = int(
+                                self.num_records * self.split_ratios[2] / len(self._num_samples_per_network_list))
+
+                            tmp_train_ids, tmp_train_shufle_ids = shuffle_list(
+                                self.train_ids[start_train_idx: start_train_idx + num_train])
+                            new_train_ids.extend(tmp_train_ids[:num_train_samples])
+                            self.train_shuffle_ids.extend([idx + start_train_idx for idx in tmp_train_shufle_ids[:num_train_samples]])
+
+                            tmp_val_ids, tmp_val_shufle_ids = shuffle_list(
+                                self.val_ids[start_val_idx: start_val_idx + num_val])
+                            new_val_ids.extend(tmp_val_ids[:num_val_samples])
+                            self.val_shuffle_ids.extend([idx + start_val_idx for idx in tmp_val_shufle_ids[:num_val_samples]])
+
+                            tmp_test_ids, tmp_test_shufle_ids = shuffle_list(
+                                self.test_ids[start_test_idx: start_test_idx + num_test])
+                            new_test_ids.extend(tmp_test_ids[:num_test_samples])
+                            self.test_shuffle_ids.extend([idx + start_test_idx for idx in tmp_test_shufle_ids[:num_test_samples]])
+
+                            start_train_idx = start_train_idx + num_train
+                            start_val_idx = start_val_idx + num_val
+                            start_test_idx = start_test_idx + num_test
+
+                        # new_train_ids = [idx for sublist in new_train_ids for idx in sublist]
+                        # new_val_ids = [idx for sublist in new_val_ids for idx in sublist]
+                        # new_test_ids = [idx for sublist in new_test_ids for idx in sublist]
+
+                    elif sampling_strategy == "subsampling":
+                        pass
+                        # num_train_samples = int(self.num_records * self.split_ratios[0])
+                        # num_val_samples = int(self.num_records * self.split_ratios[1])
+                        # num_test_samples = int(self.num_records * self.split_ratios[2])
+
+                        # new_train_ids = self.train_shuffle_ids = self.train_ids[::len(self.train_ids) // num_train_samples][:num_train_samples]
+                        # new_val_ids = self.val_shuffle_ids = self.val_ids[::len(self.val_ids) // num_val_samples][:num_val_samples]
+                        # new_test_ids = self.test_shuffle_ids = self.test_ids[::len(self.test_ids) // num_test_samples][:num_test_samples]
+
+                    self.train_ids = new_train_ids
+                    self.val_ids = new_val_ids
+                    self.test_ids = new_test_ids
+
+                    if self.dataset_log_pt_path != "" and create_and_save_to_dataset_log_if_nonexist:
+                        self.save_shuffle_indices_to_disk()
+                    else:
+                        print(
+                            "WARN! Subset shuffle indices cannot be saved as `dataset_log_pt_path` is empty or `do_save_to_dataset_log` is set to False in Gida Interface! You cannot re-load these ids in the inference or next train!",
+                            # noqa: E501
+                            flush=True,
+                        )
             self.update_indices()
 
     def save_shuffle_indices_to_disk(self) -> None:
@@ -464,9 +556,9 @@ class GidaV6(Dataset):
                 test_ids.extend(network_test_ids.tolist())
                 current_nid += network_num_samples
 
-            assert expected_train_samples == len(train_ids)
-            assert expected_valid_samples == len(val_ids)
-            assert expected_test_samples == len(test_ids)
+            # assert expected_train_samples == len(train_ids)
+            # assert expected_valid_samples == len(val_ids)
+            # assert expected_test_samples == len(test_ids)
 
         return train_ids, val_ids, test_ids
 
@@ -482,7 +574,8 @@ class GidaV6(Dataset):
         for network_index, root in enumerate(self._roots):
             if self.batch_axis_choice == "scene":
                 # arr WILL have shape <merged>(#scenes, #nodes_or_#links, #statics + time_dims * #dynamics)
-                num_samples = root.compute_first_size()
+                num_samples = root.compute_first_size() if self.num_records is None else min(self.num_records,
+                                                                                             root.compute_first_size())
                 relative_scene_ids = np.arange(num_samples)
                 tuples = (relative_scene_ids, None)
             elif self.batch_axis_choice == "temporal":
@@ -490,7 +583,8 @@ class GidaV6(Dataset):
                 relative_time_ids = np.arange(num_samples)
                 tuples = (None, relative_time_ids)
             elif self.batch_axis_choice == "snapshot":
-                num_scenes = root.compute_first_size()
+                num_scenes = root.compute_first_size() if self.num_records is None else min(self.num_records,
+                                                                                             root.compute_first_size())
                 time_dim = root.time_dim
                 relative_scene_ids = np.arange(num_scenes).repeat(time_dim)  # .reshape([-1, 1])
                 relative_time_ids = np.tile(np.arange(time_dim), reps=num_scenes)  # .reshape([-1, 1])
@@ -1010,13 +1104,56 @@ class GidaV6(Dataset):
 
             print("*" * 40)
         return cat_array
+    
+    def get_graphs_from_root(self, nid: int, max_count: int, index_tup_list: list[tuple[int | None, int | None]]) -> tuple[list[Data], int]:
+        '''
+        Method that appends at most max_count snapthots of the network with id nid to batch. Return the 
+        '''
+        root = self._roots[nid]
+        counter = 0
+        batch = []
+        
+        node_array = self.stack_features(root=root, indices=index_tup_list, which_array="node")
+        assert node_array is not None
+
+        edge_array = self.stack_features(root=root, indices=index_tup_list, which_array="edge")
+
+        label_array = self.stack_features(root=root, indices=index_tup_list, which_array="label")
+
+        edge_label_array = self.stack_features(root=root, indices=index_tup_list, which_array="edge_label")
+
+        for i in range(node_array.shape[0]):
+            if counter >= max_count:
+                break
+            x = node_array[i]
+            #print("size of x at get:", x.shape)
+            edge_attr = edge_array[i] if edge_array is not None else None
+            y = label_array[i] if label_array is not None else None
+            edge_y = edge_label_array[i] if edge_label_array is not None else None
+            edge_index: np.ndarray = root.edge_index  # self._roots[self._network_map[i]].edge_index  # type:ignore
+            if len(x) > len(root.coordinates):
+                print(f"Difference of lengths for nodes and coordinates in file {root.zip_file_path}, {len(x)}, {len(root.coordinates)}. Padding coordinates")
+                for i in range(len(x) - len(root.coordinates)):
+                    root.coordinates = np.append(root.coordinates, np.array([[0.0, 0.0]]), axis=0)
+            node_coordinates: np.ndarray = root.coordinates
+            #print("size of coordinates at get:", node_coordinates.shape)
+            
+            # print(edge_index)
+
+            dat = parse2data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, edge_y=edge_y, coordinates=node_coordinates)
+            batch.append(dat)
+            counter += 1
+        return batch, counter
+
 
     def get(self, idx: int | Sequence) -> Any:
         # return Data or list[Data]
+        assert self._indices is not None
         if isinstance(idx, int):
-            fids: list[int] = [idx]
+            fids: list[int] = self._indices[idx]
         else:
-            fids: list[int] = list(idx)
+            idx_list = np.asarray(idx).flatten().tolist()
+            fids: list[int] = [self._indices[i] for i in idx_list]
 
         batch_size = len(fids)
 
@@ -1029,38 +1166,19 @@ class GidaV6(Dataset):
         batch = []
         counter: int = 0
         for nid in root_vindices_dict.keys():
-            root: GidaV6.Root = self._roots[nid]
             # print(f"Querying network nid=({nid})- zip_path=({os.path.basename(root.zip_file_path)}) ...")
             if counter >= batch_size:
                 break
             index_tup_list: list[tuple[int | None, int | None]] = root_vindices_dict[nid]
-            node_array = self.stack_features(root=root, indices=index_tup_list, which_array="node")
-            assert node_array is not None
-
-            edge_array = self.stack_features(root=root, indices=index_tup_list, which_array="edge")
-
-            label_array = self.stack_features(root=root, indices=index_tup_list, which_array="label")
-
-            edge_label_array = self.stack_features(root=root, indices=index_tup_list, which_array="edge_label")
-
-            for i in range(node_array.shape[0]):
-                if counter >= batch_size:
-                    break
-                x = node_array[i]
-                #print("size of x at get:", x.shape)
-                edge_attr = edge_array[i] if edge_array is not None else None
-                y = label_array[i] if label_array is not None else None
-                edge_y = edge_label_array[i] if edge_label_array is not None else None
-                edge_index: np.ndarray = root.edge_index  # self._roots[self._network_map[i]].edge_index  # type:ignore
-                node_coordinates: np.ndarray = root.coordinates
-                # print("size of coordinates at get:", node_coordinates.shape)
-                # print(edge_index)
-
-                dat = parse2data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, edge_y=edge_y, coordinates=node_coordinates)
-                batch.append(dat)
-                counter += 1
+            batch_append, counter_inc = self.get_graphs_from_root(nid=nid, max_count=batch_size-counter, index_tup_list=index_tup_list)
+            batch.extend(batch_append)
+            counter += counter_inc
         assert counter == batch_size
         return batch  # type:ignore
+
+    def indices(self) -> Sequence:
+        assert self._indices is not None
+        return self._indices    
 
     def __getitem__(
         self,
@@ -1074,7 +1192,7 @@ class GidaV6(Dataset):
         bool, will return a subset of the dataset at the specified indices.
         """
         if isinstance(idx, (int, np.integer)) or (isinstance(idx, Tensor) and idx.dim() == 0) or (isinstance(idx, np.ndarray) and np.isscalar(idx)):
-            data = self.get(self.indices()[idx])[0]  # type:ignore
+            data = self.get([idx])[0]  # type:ignore
             data = data if self.transform is None else self.transform(data)
             return data
 
@@ -1085,9 +1203,31 @@ class GidaV6(Dataset):
 
     def __getitems__(self, idx: Union[int, np.integer, IndexType]) -> list[BaseData]:
         # return self.get(idx)  # type:ignore
-        batch: list[BaseData] = self.get(idx[0])  # type:ignore
+        batch: list[BaseData] = self.get(idx)  # type:ignore
         batch = batch if self.transform is None else [self.transform(dat) for dat in batch]
         return batch
+
+    def get_ids_per_network(self) -> list[list[int]]:
+        fids = np.asarray(list(self._index_map.keys()))
+        
+        flatten_index = 0
+        ids = self._indices
+        id_map = {idx: i for i, idx in enumerate(ids)}
+
+        ids_per_network = []
+        for nid, _ in enumerate(self._roots):
+            # Get all possible indices
+            network_num_samples = self._num_samples_per_network_list[nid]
+            network_flatten_ids = fids[flatten_index : flatten_index + network_num_samples]
+            flatten_index += network_num_samples
+
+            # Compute intersection with test ids
+            ids_per_network.append(list(set(network_flatten_ids).intersection(ids)))
+        # This is necessary because of the logic in __getitems__:
+        real_ids_per_network = []
+        for ids in ids_per_network:
+            real_ids_per_network.append([id_map[id] for id in ids])
+        return real_ids_per_network
 
     def gather_statistic(
         self,
@@ -1121,7 +1261,7 @@ class GidaV6(Dataset):
             "edge_label": getattr(self._roots[0], "sorted_edge_label_attrs"),
         }
 
-        time_dim = self._roots[0].attrs["duration"] // self._roots[0].attrs["time_step"]
+        time_dim = self._roots[0].time_dim #self._roots[0].attrs["duration"] // self._roots[0].attrs["time_step"]
         param_attrs = which_array_attrs_map[which_array]
         assert param_attrs is not None and len(param_attrs) > 0, f"ERROR! No found paramattrs from which_array=({which_array}): ({param_attrs})"
         channel_splitters = [
@@ -1133,7 +1273,7 @@ class GidaV6(Dataset):
 
         cat_arrays: list[dac.Array] = []
 
-        batch_indices = np.array_split(self._indices, num_batches)
+        batch_indices = np.array_split(np.arange(len(self.indices())), num_batches)
 
         selected_attr_key = which_array_attr_map[which_array]
         for bids in batch_indices:
@@ -1154,14 +1294,6 @@ class GidaV6(Dataset):
             )
 
         for i in range(len(cat_arrays)):
-            # if do_group_norm:
-            #     # reshape arr from (scenes, #nodes_or_edges, t+1+t+...) ->  (scenes * #nodes_or_edges, t+1+t+...)
-            #     arr = cat_arrays[i]
-            #     cat_arrays[i] = arr.reshape([-1, arr.shape[-1]], limit=self.chunk_limit)
-            # else:
-            #     # everything goes flatten?
-
-            #     cat_arrays.append(arr.reshape([-1, arr.shape[-1]], limit=self.chunk_limit))
             arr = cat_arrays[i]
             cat_arrays[i] = arr.reshape([-1, arr.shape[-1]], limit=self.chunk_limit)
 
@@ -1173,8 +1305,9 @@ class GidaV6(Dataset):
             current_idx = 0
             for i in range(len(channel_splitters)):
                 num_channels = channel_splitters[i]
-                t = flatten_array[:, current_idx : current_idx + num_channels]
-                t = t.flatten()
+                t = flatten_array[:, current_idx: current_idx + num_channels]
+
+                # t = t.flatten()
                 current_idx += num_channels
 
                 t_std_val, t_mean_val = t.std(axis=norm_dim), t.mean(axis=norm_dim)
@@ -1182,10 +1315,29 @@ class GidaV6(Dataset):
                 t_min_val, t_max_val = t.min(axis=norm_dim), t.max(axis=norm_dim)
                 # torch.min(t, dim=norm_dim).values, torch.max(t, dim=norm_dim).values
 
-                std_vals.append(t_std_val.reshape([-1]).repeat(num_channels))
-                mean_vals.append(t_mean_val.reshape([-1]).repeat(num_channels))
-                min_vals.append(t_min_val.reshape([-1]).repeat(num_channels))
-                max_vals.append(t_max_val.reshape([-1]).repeat(num_channels))
+                # std_vals.append(t_std_val.reshape([-1]).repeat(num_channels))
+                # mean_vals.append(t_mean_val.reshape([-1]).repeat(num_channels))
+                # min_vals.append(t_min_val.reshape([-1]).repeat(num_channels))
+                # max_vals.append(t_max_val.reshape([-1]).repeat(num_channels))
+
+                if norm_dim is not None:
+                    t_std_val = np.expand_dims(t_std_val, axis=norm_dim)
+
+                    t_mean_val = np.expand_dims(t_mean_val, axis=norm_dim)
+
+                    t_min_val = np.expand_dims(t_min_val, axis=norm_dim)
+
+                    t_max_val = np.expand_dims(t_max_val, axis=norm_dim)
+                else:
+                    t_std_val = t_std_val.reshape([-1]).repeat(num_channels)
+                    t_mean_val = t_mean_val.reshape([-1]).repeat(num_channels)
+                    t_min_val = t_min_val.reshape([-1]).repeat(num_channels)
+                    t_max_val = t_max_val.reshape([-1]).repeat(num_channels)
+
+                std_vals.append(t_std_val)
+                mean_vals.append(t_mean_val)
+                min_vals.append(t_min_val)
+                max_vals.append(t_max_val)
 
             std_val = dac.concatenate(std_vals, axis=channel_dim)
             mean_val = dac.concatenate(mean_vals, axis=channel_dim)

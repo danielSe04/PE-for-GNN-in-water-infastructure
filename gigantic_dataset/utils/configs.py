@@ -418,6 +418,7 @@ class GidaConfig(AbstractConfig):
     batch_axis_choice: Literal["temporal", "scene", "snapshot"] = "scene"  # which axis is set as batch dimension.
     do_cache: bool = False  # Flag indicates whether we cache array after first loading. Very fast but OOM can happen.
     split_per_network: bool = True  # If True, foreach network, we split train, valid, test individually (Useful for multiple network joint-training). Otherwise, we concatenate all networks into a single to-be-splitted array # noqa: E501
+    sampling_strategy: Literal["default", "random", "subsampling"] = "default"
     """"########################### DEPRECATED SOON "###########################"""
     time_sampling_rate: int = 1  # perform sampling on time dim(V5 only)
     overwatch: bool = False  # Turn on to capture memory snapshots at some defined phases. (V5 only)
@@ -481,6 +482,7 @@ class TrainConfig(AbstractConfig):
     # log_gradient: bool = False #flag indicates keeping track of gradient flow
     project_name: str = "dev-pretext-train"  # name of tracking project"
     save_path: str = ""  # Path to store model weights. If empty, we create a unique name
+    load_path: str = "" # Path to load model weights. If empty, they are initialized randomly
     log_per_epoch: int = 1  # log every log_per_epoch
     run_prefix: str = ""  # it helps naming the run on WANDB
     """#########################################################################################"""

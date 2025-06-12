@@ -1,3 +1,4 @@
+from typing import Callable, List
 import sklearn
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -7,6 +8,7 @@ import torch.nn.functional as F
 from torch_geometric.utils import get_laplacian
 from torch_geometric.data import Data
 from torch_geometric.nn import knn_graph
+from torch_scatter import scatter_mean, scatter_std, scatter_min, scatter_max, scatter_add
 import wandb
 import numpy as np
 import math
@@ -14,34 +16,47 @@ from collections import defaultdict
 from typing import Any
 from gigantic_dataset.utils.train_protos import ConfigRef
 
-def plot_pe_wandb(pe: Tensor, edge_index: Tensor, plot_name: str, plot_edges: bool = False) -> None:
-    # Verify that pe has admissible values
-    if pe.std() == 0:
-        print("Warning: Positional encoding has zero standard deviation. Skipping PE visualization.")
-        return
-    if torch.isnan(pe).any():
-        print("Warning: Positional encoding contains NaNs. They are converted to zeros.")
-    #TODO fix this
-    return 
-    pe = pe.cpu().numpy()
-    tsne = sklearn.manifold.TSNE(n_components=2, random_state=42) #TODO perhaps change perplexity and random_state parameter
-    z_2d = tsne.fit_transform(pe)
-    fig, ax = plt.subplots(figsize=(16,12))
-    
-    ax.scatter(z_2d[:, 0], z_2d[:, 1], s=10, color='darkblue')
-    ax.set_title("t-SNE visualization of positional encoding")
-    ax.set_xlabel("t-SNE dim 1")
-    ax.set_ylabel("t-SNE dim 2")
+def plot_pe_wandb(pe: Tensor | list[Tensor], edge_index: Tensor, plot_name: str, plot_edges: bool = False) -> None:
+    if isinstance(pe, Tensor):
+        pe = [pe]
+    print("Number of snapshots: ", len(pe))
+    if len(pe) > 2:
+        print("Warning, more than two positional encodings to be visualized.", pe)
+        fig, axs = plt.subplots(1, 2, figsize=(2*8,6))
+    else:
+        fig, axs = plt.subplots(1, len(pe), figsize=(len(pe)*8,6))
 
-    if plot_edges:
-        segments = [
-            [z_2d[edge_index[0][i]], z_2d[edge_index[1][i]]]
-            for i in range(edge_index.shape[1])
-        ]
-        lc = LineCollection(segments, linewidths=0.2, alpha=0.5, color='blue')
-        ax.add_collection(lc)
+    for i, pe_snapshot in enumerate(pe):
+        if i >= 2:
+            break
+        ax = axs[i] if len(pe) > 1 else axs
+        if pe_snapshot.std() == 0:
+            print("Warning: Positional encoding has zero standard deviation. Adding a small amount of noise.")
+            pe_snapshot += 1e-4 * torch.randn_like(pe_snapshot)
+        if torch.isnan(pe_snapshot).any():
+            print("Warning: Positional encoding contains NaNs. They are converted to zeros.")
+            pe_snapshot = torch.nan_to_num(pe_snapshot)
+
+        pe_snapshot = pe_snapshot.cpu().numpy()
+        perplexity = 30.0 if len(pe_snapshot) > 30.0 else len(pe_snapshot) - 1.0
+        tsne = sklearn.manifold.TSNE(n_components=2, random_state=42, perplexity=perplexity) #TODO perhaps change perplexity and random_state parameter
+        z_2d = tsne.fit_transform(pe_snapshot)
+        
+        ax.scatter(z_2d[:, 0], z_2d[:, 1], s=10, color='darkblue')
+        ax.set_title("t-SNE visualization of positional encoding")
+        ax.set_xlabel("t-SNE dim 1")
+        ax.set_ylabel("t-SNE dim 2")
+
+        if plot_edges:
+            segments = [
+                [z_2d[edge_index[0][i]], z_2d[edge_index[1][i]]]
+                for i in range(edge_index.shape[1])
+            ]
+            lc = LineCollection(segments, linewidths=0.2, alpha=0.5, color='blue')
+            ax.add_collection(lc)
 
     wandb.log({plot_name: wandb.Image(fig)})
+    plt.close(fig)
 
 def sparse_diagonal(G: Tensor):
         G = G.coalesce()
@@ -72,10 +87,10 @@ def laplacian_eigenvector_loss(pe: Tensor, laplacian: Tensor, lambda_ortho: int 
     ortho = F.mse_loss(pe_t @ pe, identity_matrix) # Since pe is normalized, frobenius norm is equal to k * mse, and the k cancels out
     return trace + lambda_ortho * ortho
 
-def calculate_pe_loss(pe: Tensor, pe_out: Tensor, edge_index: Tensor | None = None, edge_weight: Tensor | None = None):
+def calculate_auxiliary_loss(pe: Tensor, pe_out: Tensor, edge_index: Tensor | None = None, edge_weight: Tensor | None = None):
     loss_criterion = ConfigRef.config.pe_criterion
-    if loss_criterion == "mse" or loss_criterion == "morans_i":
-        assert pe.shape == pe_out.shape
+    if loss_criterion == "mse" or loss_criterion == "morans-i":
+        assert pe.shape == pe_out.shape, f"Cannot compute MSE: Shape of target is {pe.shape}, but shape of output is {pe_out.shape}"
         return torch.nn.MSELoss(reduction="mean").to(ConfigRef.config.device)(pe_out, pe)
     elif loss_criterion == "laplacian":
         assert edge_index is not None, f"Edge indices are required for calculation of {loss_criterion} loss, but edge_index is None."
@@ -140,33 +155,38 @@ def get_activation_function(activation, context_str):
     else:
         raise Exception("{} activation not recognized.".format(context_str))
     
-def normal_torch(tensor,min_val=0):
-    t_min = torch.min(tensor)
-    t_max = torch.max(tensor)
-    if t_min == 0 and t_max == 0:
-        return torch.tensor(tensor)
+def normal_torch(tensor, batch, min_val=0):
+    t_min = scatter_min(tensor, batch, dim=0)[0]
+    t_max = scatter_max(tensor, batch, dim=0)[0]
+
+    den = t_max - t_min
+    den[den == 0] = 1
+
     if min_val == -1:
-        tensor_norm = 2 * ((tensor - t_min) / (t_max - t_min)) - 1
+        tensor_norm = 2 * ((tensor - t_min[batch]) / den[batch]) - 1
     if min_val== 0:
-        tensor_norm = ((tensor - t_min) / (t_max - t_min))
-    return torch.tensor(tensor_norm)
+        tensor_norm = ((tensor - t_min[batch]) / den[batch])
+    return tensor_norm
     
-def lw_tensor_local_moran(y,w_sparse,na_to_zero=True,norm=True,norm_min_val=0):
+def lw_tensor_local_moran(y, edge_index, batch=None, na_to_zero=True, norm=True, norm_min_val=0):
     device = ConfigRef.config.device
-    y = y.reshape(-1)
-    n = len(y)
-    n_1 = n - 1
-    z = y - y.mean()
-    sy = y.std()
-    z /= sy
-    den = (z * z).sum()
-    zl = torch.tensor(w_sparse * z).to(device)
-    mi = n_1 * z * zl / den
+    if batch == None:
+        batch = torch.zeros(len(y)).to(device).long()
+    n_1_per_graph = torch.bincount(batch) - 1
+    y_mean_per_graph = scatter_mean(y, batch, dim=0)
+    y_sd_per_graph = scatter_std(y, batch, dim=0)
+    y_sd_per_graph[y_sd_per_graph==0] = 1
+    z = (y - y_mean_per_graph[batch]) / y_sd_per_graph[batch]
+    den = scatter_add(z * z, batch, dim=0)
+    w_sparse = torch.sparse_coo_tensor(edge_index, torch.ones(edge_index.shape[1], device=device), size=(len(y), len(y)), device=device).coalesce()
+    zl = torch.sparse.mm(w_sparse, z).to(device)
+    mi = n_1_per_graph[batch].unsqueeze(1) * z * zl / den[batch]
     if na_to_zero==True:
-        mi[torch.isnan(mi)] = 0
+        mi = torch.nan_to_num(mi, nan=0.0)
     if norm==True:
-        mi = normal_torch(mi,min_val=norm_min_val)
-    return torch.tensor(mi)
+        mi = normal_torch(mi, batch, min_val=norm_min_val)
+    print("moran's I shape: ", mi.shape)
+    return torch.tensor(mi) # This is intentional
 
 # This class is copied from the original PE-GNN implementation. See https://github.com/konstantinklemmer/pe-gnn
 class SingleFeedForwardNN(nn.Module):

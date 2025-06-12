@@ -26,13 +26,15 @@ from gigantic_dataset.utils.train_utils import (
     print_single_metrics,
     wrapper_data_loader,
 )
+from gigantic_dataset.core.datasets_large import GidaSubset, get_dataset_name_from_zip_file_path
 from gigantic_dataset.utils.gen_random_mask_v8 import generate_batch_mask
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
+from torch_geometric.nn import knn_graph
 import torch
 import wandb
 from gigantic_dataset.utils.train_protos import StartProfilerProto, ForwardProto, TrainOneEpochProto, TestOneEpochProto, ConfigRef
-from gigantic_dataset.utils.pe_utils import plot_pe_wandb, calculate_pe_loss, lw_tensor_local_moran, calculate_subgraph
+from gigantic_dataset.utils.pe_utils import plot_pe_wandb, calculate_auxiliary_loss, lw_tensor_local_moran, calculate_subgraph
 
 
 class WandbStartProfiler(StartProfilerProto):
@@ -83,27 +85,32 @@ class SupervisedSingleForward(ForwardProto):
 
 
 class SemiSingleForwardPE(ForwardProto):
-    def __init__(self, pe_initializer: PE_Initializer, pe_supervised: bool = False):
-        self.pe_initializer = pe_initializer
+    def __init__(self, pe_supervised: bool = False):
         self.pe_supervised = pe_supervised
 
     def __call__(
         self, models: list[Module], data: Data, batch_mask: torch.Tensor, take_first_channel: bool = True, **kwargs: Any
     ) -> tuple[Any, Any, Any | None, Any, Any, Any]:
         assert data.x is not None
-        pe_dim = models[0].get_pe_dim()
-        pe = self.pe_initializer(edge_index=data.edge_index, num_nodes=len(data.x), pe_dim=pe_dim, batch=data.batch, geo_coords=data.coordinates)
+        assert models[0].pe_initializer is not None
+        #TODO perhaps refactor this
+        pe = models[0].get_pe(data=data)
         data.y = deepcopy(data.x)
 
         data.x[batch_mask, 0] = 0
         if not self.pe_supervised:
-            print("Positional encoding is semi-supervised")
             pe[batch_mask] = 0
-        out, pe_out = models[0](x=data.x, edge_index=data.edge_index, pe=pe, batch=data.batch, edge_attr=data.edge_attr)
+        result = models[0](x=data.x, edge_index=data.edge_index, pe=pe, batch=data.batch, edge_attr=data.edge_attr)
+        if isinstance(result, tuple):
+            out, pe_out = result
+        else:
+            out = result
+            pe_out = pe
         y_pred = apply_masks(out, [batch_mask])  # out[batch_mask] #type:ignore
         y_true = data.y[batch_mask]  # type:ignore
         pe_pred = pe_out
-        pe_true = pe if not ConfigRef.config.pe_criterion == "morans-i" else lw_tensor_local_moran(y=pe, w_sparse=data.edge_index).to(pe.device)
+        pe_true = pe
+
         if not self.pe_supervised:
             pe_pred = apply_masks(pe_out, [batch_mask])
             pe_true = pe[batch_mask]
@@ -116,13 +123,17 @@ class SemiSingleForwardPE(ForwardProto):
 
 class SemiSingleForward(ForwardProto):
     def __call__(
-        self, models: list[Module], data: Data, batch_mask: torch.Tensor, take_first_channel: bool = True, **kwargs: Any
+        self, models: list[Module], data: Data, batch_mask: torch.Tensor, take_first_channel: bool = True, pass_coordinates: bool = False, **kwargs: Any
     ) -> tuple[Any, Any, Any | None]:
         assert data.x is not None
         data.y = deepcopy(data.x)
 
         data.x[batch_mask, 0] = 0
-        out = models[0](x=data.x, edge_index=data.edge_index, batch=data.batch, edge_attr=data.edge_attr)
+        if not pass_coordinates:
+            out = models[0](x=data.x, edge_index=data.edge_index, batch=data.batch, edge_attr=data.edge_attr)
+        else:
+            assert "coordinates" in data, "Coordinates are supposed to be passed, but are not included in Data object"
+            out = models[0](x=data.x, edge_index=data.edge_index, coordinates=data.coordinates, batch=data.batch, edge_attr=data.edge_attr)
 
         y_pred = apply_masks(out, [batch_mask])  # out[batch_mask] #type:ignore
         y_true = data.y[batch_mask]  # type:ignore
@@ -153,13 +164,16 @@ class TrainOneEpoch(TrainOneEpochProto):
             pt.to(device)
         len_loader_dataset = len(loader.dataset)  # type:ignore
         total_loss = 0
+        total_loss_aux = 0
         total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
         out = None
 
         for data in loader:  # Iterate in batches over the training dataset.
             [optimizer.zero_grad() for optimizer in optimizers]  # Clear gradients.
             if config.subgraphing:
-                data = calculate_subgraph(data, k=config.k, batch_size=config.batch_size_subgraph)
+                #data = calculate_subgraph(data, k=config.k, batch_size=config.batch_size_subgraph)
+                assert "coordinates" in data, "Coordinates are needed for knn-based subgraphing, but are not included in data"
+                data.edge_index = knn_graph(data.coordinates, config.k, data.batch if "batch" in data else None)
 
             num_nodes = torch.unique(data.batch, return_counts=True)[1]
             batch_mask = generate_batch_mask(num_nodes=num_nodes, edge_index=data.edge_index, mask_rate=mask_rate, required_mask=None)
@@ -179,12 +193,20 @@ class TrainOneEpoch(TrainOneEpochProto):
             # Calculate loss
             tr_loss = criterion(y_pred, y_true)
             loss = tr_loss
-            pe_loss = float('nan')
             pe_out = None
             if len(pe) == 3:
                 pe_true, pe_pred, pe_out = pe
-                pe_loss = calculate_pe_loss(pe_true, pe_pred, edge_index=data.edge_index)
-                loss = tr_loss + config.pe_loss_alpha*pe_loss
+                if ConfigRef.config.pe_criterion == "morans-i":
+                    aux_true = lw_tensor_local_moran(y=data.y, edge_index=data.edge_index, batch=data.batch).to(device)
+                    aux_true = aux_true[:, 0] # take only the pressure estimation, as in the regular criterion
+                    aux_pred = data.x[:, 0]
+                else:
+                    aux_true = pe_true
+                    aux_pred = pe_pred
+                aux_loss = calculate_auxiliary_loss(aux_true, aux_pred, edge_index=data.edge_index)
+                total_loss_aux += aux_loss
+                loss = tr_loss + config.pe_loss_alpha*aux_loss
+
             loss.backward()  # Derive gradients.
             [optimizer.step() for optimizer in optimizers]  # Update parameters based on gradients.
 
@@ -199,7 +221,7 @@ class TrainOneEpoch(TrainOneEpochProto):
         with torch.no_grad():
             dividend = max(1, len_loader_dataset)
             metric_dict = {k: total_metric_dict[k] / dividend for k in total_metric_dict.keys()}
-            return total_loss / dividend, metric_dict, out, pe_loss, pe_out
+            return total_loss / dividend, metric_dict, out, total_loss_aux / dividend, pe_out
 
 
 class TestOneEpoch(TestOneEpochProto):
@@ -209,10 +231,10 @@ class TestOneEpoch(TestOneEpochProto):
         loader: DataLoader,
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
-        plot_pe: bool = False,
-        dataset_names: list[str] | None = None,
+        plot_pe: bool = False, # Plotting pe assumes that data loader only loads one type of graph topology
+        topology_name: str = "",
         **kwargs: Any,
-    ) -> tuple[float, dict, Any, float, Any | None]:
+    ) -> tuple[float, dict, Any, float]:
         config = ConfigRef.config
         func_ref = ConfigRef.ref
         device = config.device if config.device == "cuda" and torch.cuda.is_available() else "cpu"
@@ -225,6 +247,7 @@ class TestOneEpoch(TestOneEpochProto):
             pt.to(device)
         with torch.no_grad():
             total_loss = 0
+            total_loss_aux = 0
             total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
             len_loader_dataset = len(loader.dataset)  # type:ignore
             for i, data in enumerate(loader):
@@ -246,13 +269,21 @@ class TestOneEpoch(TestOneEpochProto):
                 data.coordinates = data.coordinates.to(device, non_blocking=non_blocking) if "coordinates" in data else None
 
                 y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
+                val_loss = criterion(y_pred, y_true)
                 pe_out = None
                 pe_loss = float('nan')
                 if len(pe) == 3:
                     pe_true, pe_pred, pe_out = pe
-                    pe_loss = criterion(pe_true, pe_pred)
+                    if ConfigRef.config.pe_criterion == "morans-i":
+                        aux_true = lw_tensor_local_moran(y=data.y, edge_index=data.edge_index, batch=data.batch).to(device)
+                        aux_true = aux_true[:, 0] # take only the pressure estimation, as in the regular criterion
+                        aux_pred = data.x[:, 0]
+                    else:
+                        aux_true = pe_true
+                        aux_pred = pe_pred
+                    aux_loss = calculate_auxiliary_loss(aux_true, aux_pred, edge_index=data.edge_index)
+                    total_loss_aux += aux_loss
 
-                val_loss = criterion(y_pred, y_true)
                 # update metrics
                 y_pred_rescaled, y_true_rescaled = func_ref.post_forward_tf_fn(y_pred, y_true)
                 total_loss += float(val_loss) * data.num_graphs
@@ -260,15 +291,22 @@ class TestOneEpoch(TestOneEpochProto):
                     computed_metric = fn(y_pred_rescaled, y_true_rescaled)
                     total_metric_dict[k] += computed_metric * data.num_graphs
                 if plot_pe and pe_out is not None:
-                    if i < len(dataset_names):
-                        plot_pe_wandb(pe=pe_out, edge_index=data.edge_index, plot_name=dataset_names[i])
-                    else:
-                        print("Error: More datasets than dataset names. Defaulting to standard dataset name.")
-                        plot_pe_wandb(pe=pe_out, edge_index=data.edge_index, plot_name=f"Default_{i}")
+                    if data.batch is None or len(data.batch.unique()) == 1:
+                        print("Only one snapshot: ", "no batch" if data.batch is None else len(data.batch.unique()))
+                        plot_pe_wandb(pe=pe_out, edge_index=data.edge_index, plot_name=topology_name)
+                        continue
+                    snapshot_ids = data.batch.unique(sorted=True)
+                    num_plots = 2
+                    chosen_snapshots = np.random.choice(snapshot_ids, size=num_plots, replace=False)
+                    pe_plot = []
+                    for id in chosen_snapshots:
+                        pe_plot.append(pe_out[data.batch == id])
+                    plot_pe_wandb(pe=pe_plot, edge_index=data.edge_index, plot_name=topology_name)
+                    
 
             dividend = max(1, len_loader_dataset)
             metric_dict = {k: total_metric_dict[k] / dividend for k in total_metric_dict.keys()}
-            return total_loss / dividend, metric_dict, out, pe_loss, pe_out
+            return total_loss / dividend, metric_dict, out, total_loss_aux / dividend
 
 
 def train(
@@ -276,7 +314,6 @@ def train(
     datasets: list[Dataset],
     train_metric_fn_dict: dict[str, Callable],
     val_metric_fn_dict: dict[str, Callable],
-    dataset_names: list[str] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     sampling_strategy = kwargs.get("sampling_strategy", "batch")
@@ -316,14 +353,11 @@ def train(
             **kwargs,
         )
 
-        plot_pe = (epoch == 1 or epoch == config.epochs)
-        val_loss, val_metric_dict, _, val_loss_pe, _ = func_ref.test_one_epoch_fn(
+        val_loss, val_metric_dict, _, val_loss_pe = func_ref.test_one_epoch_fn(
             models=models,
             loader=val_loader,
             criterion=criterion,
             metric_fn_dict=val_metric_fn_dict,
-            plot_pe=plot_pe,
-            dataset_names=dataset_names if not plot_pe else [name + f"-{epoch}" for name in dataset_names],
             **kwargs,
         )
 
@@ -388,15 +422,28 @@ def eval(
     datasets: list[Dataset],
     test_metric_fn_dict: dict[str, Callable],
     plot_pe: bool = False,
-    dataset_names: list[str] | None = None,
     **kwargs: Any,
 ) -> Any | None:
     config = ConfigRef.config
     func_ref = ConfigRef.ref
 
-    test_loader = wrapper_data_loader(datasets[-1], sampling_strategy="batch", batch_size=config.batch_size, shuffle=False, pin_memory=False)
+    test_dataset = datasets[-1]
 
+    test_loader = wrapper_data_loader(test_dataset, sampling_strategy="batch", batch_size=config.batch_size, shuffle=False, pin_memory=False)
     assert isinstance(test_loader, DataLoader)
+
+    topology_loaders = []
+
+    # Create data loaders for every topology individually
+    test_ids_per_network: list[list[int]] = test_dataset.get_ids_per_network()
+    for nid, ids in enumerate(test_ids_per_network):
+        print(len(ids))
+        topology_loader = wrapper_data_loader(GidaSubset(dataset=test_dataset, indices=ids), sampling_strategy="batch", batch_size=config.batch_size, shuffle=False, pin_memory=False)
+        assert isinstance(topology_loader, DataLoader)
+        topology_loaders.append(topology_loader)
+    
+    zip_file_paths = test_dataset.zip_file_paths
+    topology_names = [get_dataset_name_from_zip_file_path(z) for z in zip_file_paths]
 
     # load reference
     criterion = func_ref.load_criterion(**kwargs)
@@ -407,15 +454,13 @@ def eval(
     dt1 = datetime.fromtimestamp(start_time)
     print("Start time:", dt1)
     print("*" * 80)
-
-    test_loss, test_metric_dict, _, pe_loss, _ = func_ref.test_one_epoch_fn(
+    
+    test_loss, test_metric_dict, _, pe_loss = func_ref.test_one_epoch_fn(
         models=models,
         loader=test_loader,
         criterion=criterion,
         metric_fn_dict=test_metric_fn_dict,
         config=config,
-        plot_pe=plot_pe,
-        dataset_names=dataset_names if not plot_pe else [name + "-test" for name in dataset_names],
         **kwargs,
     )
 
@@ -433,6 +478,26 @@ def eval(
             test_loss=test_loss,
             pe_loss=pe_loss,
             best_epoch=best_epoch,
+            test_metric_dict=test_metric_dict,
+    )
+        
+    for i, loader in enumerate(topology_loaders):
+        test_loss, test_metric_dict, _, pe_loss = func_ref.test_one_epoch_fn(
+        models=models,
+        loader=loader,
+        criterion=criterion,
+        metric_fn_dict=test_metric_fn_dict,
+        config=config,
+        plot_pe=plot_pe,
+        topology_name=topology_names[i],
+        **kwargs,
+        )
+
+        print_single_metrics(
+            epoch=0,
+            dataset_name=topology_names[i],
+            test_loss=test_loss,
+            pe_loss=pe_loss,
             test_metric_dict=test_metric_dict,
         )
 
