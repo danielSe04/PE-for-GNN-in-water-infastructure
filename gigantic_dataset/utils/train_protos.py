@@ -367,6 +367,7 @@ def load_gida_datasets(
     gida_config: GidaConfig,
     custom_stats_tuple_pt_path: str = "",
     custom_subset_shuffle_pt_path: str = "",
+    is_training: bool = True
 ) -> list[Dataset]:
     """Function supports loading gida datasets with GiDa Interface.<br />
     NOTE: If you want pre-define stats tuple when computing normalization, override `custom_stats_tuple_pt_path` with the dataset_log.pt of elsewhere training config. If not, we reuse the `dataset_log.pt` from `load_path` of the CURRENT Training Config. <br />
@@ -384,8 +385,9 @@ def load_gida_datasets(
     train_set, valid_set, test_set = None, None, None
 
     # default path (if empty, we create)
-    defaut_dataset_log_pt_path = osp.join(ConfigRef.config.load_path, "gida_dataset_log.pt")
-    gida_config.dataset_log_pt_path = defaut_dataset_log_pt_path
+    if is_training:
+        defaut_dataset_log_pt_path = osp.join(ConfigRef.config.load_path, "gida_dataset_log.pt")
+        gida_config.dataset_log_pt_path = defaut_dataset_log_pt_path
 
     # call interface and implicitly load subset shuffle ids from the custom path
     gida_param_dict = gida_config.as_dict()
