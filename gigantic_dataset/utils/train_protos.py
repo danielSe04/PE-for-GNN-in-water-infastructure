@@ -369,9 +369,9 @@ def load_gida_datasets(
     custom_subset_shuffle_pt_path: str = "",
 ) -> list[Dataset]:
     """Function supports loading gida datasets with GiDa Interface.<br />
-    NOTE: If you want pre-define stats tuple when computing normalization, override `custom_stats_tuple_pt_path` with the dataset_log.pt of elsewhere training config. If not, we reuse the `dataset_log.pt` from `save_path` of the CURRENT Training Config. <br />
+    NOTE: If you want pre-define stats tuple when computing normalization, override `custom_stats_tuple_pt_path` with the dataset_log.pt of elsewhere training config. If not, we reuse the `dataset_log.pt` from `load_path` of the CURRENT Training Config. <br />
     NOTE: If testing on different network and ensuring on the same subset of test set, user should override `custom_subset_shuffle_pt_path` in `gida_config`. <br />
-    By default, we use `stat_tuple`, which is stored in `dataset_log.pt` in the folder `save_path` of training config accessed via a singleton interface, to do normalization.<br />
+    By default, we use `stat_tuple`, which is stored in `dataset_log.pt` in the folder `load_path` of training config accessed via a singleton interface, to do normalization.<br />
     NOTE: pre_processing only normalize 'x' features<br />
     Args:
         gida_config (GidaConfig): gida confi
@@ -384,7 +384,7 @@ def load_gida_datasets(
     train_set, valid_set, test_set = None, None, None
 
     # default path (if empty, we create)
-    defaut_dataset_log_pt_path = osp.join(ConfigRef.config.save_path, "gida_dataset_log.pt")
+    defaut_dataset_log_pt_path = osp.join(ConfigRef.config.load_path, "gida_dataset_log.pt")
     gida_config.dataset_log_pt_path = defaut_dataset_log_pt_path
 
     # call interface and implicitly load subset shuffle ids from the custom path
@@ -415,7 +415,7 @@ def load_gida_datasets(
 
 def default_load_optimizers(
     models: list[nn.Module],
-    load_from: Literal["best_in_save_path", "last_in_save_path", "per_model_weight_path"] = "best_in_save_path",
+    load_from: Literal["best_in_load_path", "last_in_load_path", "per_model_weight_path"] = "best_in_load_path",
     is_shared_optim: bool = False,
     **kwds: Any,
 ) -> list[Optimizer]:
@@ -430,9 +430,9 @@ def default_load_optimizers(
             optimizers = [Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay) for model in models]
 
     try:
-        if load_from in ["best_in_save_path", "last_in_save_path"] and config.save_path != "":
+        if load_from in ["best_in_load_path", "last_in_load_path"] and config.load_path != "":
             prefix = load_from.split("_")[0]
-            latest_file = osp.join(config.save_path, prefix + "_training_log.pt")
+            latest_file = osp.join(config.load_path, prefix + "_training_log.pt")
             cp_dict = load(latest_file)
             optimizers_state_dict = cp_dict["optimizers_state_dict"]
             for i, optim_state in optimizers_state_dict.items():

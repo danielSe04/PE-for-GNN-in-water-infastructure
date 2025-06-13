@@ -144,16 +144,16 @@ class LoadModel(LoadModelProto):
                 models, _ = load_weights(path=model_config.weight_path, models=[model], load_keys=[model_config.name])
                 model = models[0]
             modules.append(model)
-        if load_weights_from == "train_config" and train_config.save_path != "" and os.path.exists(train_config.save_path):
+        if load_weights_from == "train_config" and train_config.load_path != "" and os.path.exists(train_config.load_path):
             filter_word = "best" if do_load_best else "last"
-            model_weight_paths = [entry for entry in os.listdir(train_config.save_path) if "training_log" not in entry and filter_word in entry]
+            model_weight_paths = [entry for entry in os.listdir(train_config.load_path) if "training_log" not in entry and filter_word in entry]
             if len(model_weight_paths) > 0:
                 assert len(model_weight_paths) == len(modules)
                 for i in range(len(modules)):
                     matching_order_paths = [path for path in model_weight_paths if str(i) in path]
                     matching_order_path = matching_order_paths[0]
                     tmps, _ = load_weights(
-                        path=os.path.join(train_config.save_path, matching_order_path), models=[modules[i]], load_keys=[model_configs[i].name]
+                        path=os.path.join(train_config.load_path, matching_order_path), models=[modules[i]], load_keys=[model_configs[i].name]
                     )
                     modules[i] = tmps[0].to(train_config.device)
 

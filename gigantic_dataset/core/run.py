@@ -89,6 +89,7 @@ def get_dataset_names(gida_config: GidaConfig) -> list[str]:
 def pressure_estimation(
     gida_yaml_path: str,
     train_yaml_path: str,
+    load_path: str = "",
     save_path: str = "",
     custom_stats_tuple_pt_path: str = "",
     custom_subset_shuffle_pt_path: str = "",
@@ -98,6 +99,7 @@ def pressure_estimation(
     Args:
         gida_yaml_path (str): gida path, corresponding to parameter set of GiDa Interface
         train_yaml_path (str): training config, parameter set for training stuff
+        load_path (str, optional): to override train_config.load_path. If both are blank, model weights are initialized randomly. Defaults to "".
         save_path (str, optional): to override train_config.save_path. Leave blank to auto-gen save path (and folder). Defaults to "".
         custom_stats_tuple_pt_path (str, optional): Custom .pt file to LOAD (READ-ONLY) stats tuple. If empty, we load stats from the default dataset log in `train_config.save_path`. Defaults to "".
         custom_subset_shuffle_pt_path (str, optional):Custom .pt file to LOAD (READ-ONLY) subset shuffle ids. If empty, we load ids from the default dataset log in `train_config.save_path`. Defaults to "".
@@ -113,7 +115,7 @@ def pressure_estimation(
     train_config = TrainConfig()
     train_config._parsed = True
     train_config._from_yaml(train_yaml_path, unsafe_load=True)
-    train_config.save_path = save_path
+    train_config.load_path = load_path
 
     # to flush to terminal
     setattr(train_config, "data", gida_config.as_dict())
@@ -224,7 +226,7 @@ def pressure_estimation(
 def pressure_estimation_inference(
     gida_yaml_path: str,
     train_yaml_path: str,
-    save_path: str = "",
+    load_path: str = "",
     custom_stats_tuple_pt_path: str = "",
     custom_subset_shuffle_pt_path: str = "",
 ) -> None:
@@ -234,8 +236,8 @@ def pressure_estimation_inference(
         gida_yaml_path (str): gida path, corresponding to parameter set of GiDa Interface
         train_yaml_path (str): training config, parameter set for training stuff
         save_path (str, optional): to override train_config.save_path. Leave blank to auto-gen save path (and folder). Defaults to "".
-        custom_stats_tuple_pt_path (str, optional): Custom .pt file to LOAD (READ-ONLY) stats tuple. If empty, we load stats from the default dataset log in `train_config.save_path`. Defaults to "".
-        custom_subset_shuffle_pt_path (str, optional):Custom .pt file to LOAD (READ-ONLY) subset shuffle ids. If empty, we load ids from the default dataset log in `train_config.save_path`. Defaults to "".
+        custom_stats_tuple_pt_path (str, optional): Custom .pt file to LOAD (READ-ONLY) stats tuple. If empty, we load stats from the default dataset log in `train_config.load_path`. Defaults to "".
+        custom_subset_shuffle_pt_path (str, optional):Custom .pt file to LOAD (READ-ONLY) subset shuffle ids. If empty, we load ids from the default dataset log in `train_config.load_path`. Defaults to "".
     Returns:
         list[str]: return save_path where storing model weights and training stuff.
     """  # noqa: E501
@@ -248,8 +250,8 @@ def pressure_estimation_inference(
     train_config = TrainConfig()
     train_config._parsed = True
     train_config._from_yaml(train_yaml_path, unsafe_load=True)
-    # if save_path != "":
-    #     train_config.save_path = save_path
+    if load_path != "":
+        train_config.load_path = load_path
 
     # to flush to terminal
     setattr(train_config, "data", gida_config.as_dict())

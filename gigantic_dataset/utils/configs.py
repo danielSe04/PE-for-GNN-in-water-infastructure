@@ -482,6 +482,7 @@ class TrainConfig(AbstractConfig):
     # log_gradient: bool = False #flag indicates keeping track of gradient flow
     project_name: str = "dev-pretext-train"  # name of tracking project"
     save_path: str = ""  # Path to store model weights. If empty, we create a unique name
+    load_path: str = ""
     log_per_epoch: int = 1  # log every log_per_epoch
     run_prefix: str = ""  # it helps naming the run on WANDB
     """#########################################################################################"""
