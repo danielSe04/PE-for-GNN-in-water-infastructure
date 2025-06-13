@@ -29,7 +29,7 @@ from gigantic_dataset.utils.train_utils import (
     get_default_metric_fn_collection,
     find_latest_files,
 )
-from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE, PE_concat_GATResMeanConv
+from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE, PE_concat_GATResMeanConv, EquiformerMeanConv
 
 
 from torch_geometric.data import Data
@@ -70,21 +70,22 @@ def extract_dataset_name(gida_config: GidaConfig) -> str:
         dataset_name = f"{num_networks}wdns"
     return dataset_name
 
-def get_dataset_names(gida_config: GidaConfig) -> list[str]:
-    """
-    Helper function to export names for pe plots.
-    """
-    if len(gida_config.zip_file_paths) <= 0:
-        return []
-    names = []
-    for path in gida_config.zip_file_paths:
-        basename = osp.basename(path)
-        segments = basename.split("_")
-        if len(segments) >= 2:
-            names.append(segments[1])
+def add_pe_to_func_ref(func_ref, train_config: TrainConfig):
+    pe_technique = train_config.positional_encoding
+    if pe_technique == "":
+        return func_ref
+    if pe_technique == "equiformer":
+        func_ref.load_models = partial(LoadModel(), model_class=EquiformerMeanConv, pe_dim=0)
+        func_ref.forward_fn = partial(SemiSingleForward(), pass_coordinates=True)
+    else:
+        if pe_technique == "lspe":
+            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
+        elif pe_technique == "pe-gnn" or pe_technique == "concat":
+            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
         else:
-            names.append(basename)
-    return names
+            raise NotImplementedError()
+        func_ref.forward_fn = SemiSingleForwardPE(pe_supervised=(train_config.pe_task == "supervised"))
+    return func_ref
         
 def pressure_estimation(
     gida_yaml_path: str,
@@ -115,14 +116,16 @@ def pressure_estimation(
     train_config = TrainConfig()
     train_config._parsed = True
     train_config._from_yaml(train_yaml_path, unsafe_load=True)
-    train_config.load_path = load_path
+    if not load_path == "":
+        train_config.load_path = load_path
+    if not save_path == "":
+        train_config.save_path = save_path
 
     # to flush to terminal
     setattr(train_config, "data", gida_config.as_dict())
 
     # add function references, where we mix and match training code.
     dataset_name = extract_dataset_name(gida_config)
-    dataset_names = get_dataset_names(gida_config)
     func_ref = FuncRef(
         start_profiler_fn=partial(WandbStartProfiler(), dataset_name=dataset_name),
         forward_fn=SemiSingleForward(),
@@ -133,7 +136,7 @@ def pressure_estimation(
         post_forward_tf_fn=default_post_foward_transform,
         load_criterion=default_load_criterion,
         load_datasets=partial(
-            load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path
+            load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path, is_training=True
         ),
         load_models=LoadModel(),
         load_optimizers=default_load_optimizers,
@@ -141,25 +144,8 @@ def pressure_estimation(
     )
 
     # Modify function references based on the positional encoding specified, if pe is used
-    pe_technique = train_config.positional_encoding
-    pe_init = train_config.pe_init
-    if pe_technique == "":
-        pass
-    else:
-        if pe_technique == "lspe":
-            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
-        elif pe_technique == "pe-gnn":
-            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
-        else:
-            raise NotImplementedError()
-        if pe_init == "rw":
-            pe_initializer = RWPE_Initializer()
-        elif pe_init == "geo":
-            pe_initializer = GeoPE_Initializer()
-        else:
-            raise NotImplementedError()
-        
-        func_ref.forward_fn = SemiSingleForwardPE(pe_initializer=pe_initializer, pe_supervised=(train_config.pe_task == "supervised"))
+    
+    func_ref = add_pe_to_func_ref(func_ref, train_config)
 
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)
@@ -207,7 +193,6 @@ def pressure_estimation(
         models=models,
         train_metric_fn_dict=get_default_metric_fn_collection(prefix="train", task="semi"),
         val_metric_fn_dict=get_default_metric_fn_collection(prefix="val", task="semi"),
-        dataset_names=dataset_names
     )
     # temporarily comment for fast check
     # TODO: If you wish to switch wandb project, we must re-call start profiler fn and override the project name
@@ -218,6 +203,7 @@ def pressure_estimation(
         datasets=datasets,
         models=models,
         test_metric_fn_dict=get_default_metric_fn_collection(prefix="test", task="semi"),
+        plot_pe=True
     )
 
     return ret_dict
@@ -227,6 +213,7 @@ def pressure_estimation_inference(
     gida_yaml_path: str,
     train_yaml_path: str,
     load_path: str = "",
+    save_path: str = "",
     custom_stats_tuple_pt_path: str = "",
     custom_subset_shuffle_pt_path: str = "",
 ) -> None:
@@ -236,6 +223,7 @@ def pressure_estimation_inference(
         gida_yaml_path (str): gida path, corresponding to parameter set of GiDa Interface
         train_yaml_path (str): training config, parameter set for training stuff
         save_path (str, optional): to override train_config.save_path. Leave blank to auto-gen save path (and folder). Defaults to "".
+        load_path (str, optional): to override train_config.load_path. If both are blank, model weights are initialized randomly. Defaults to "".
         custom_stats_tuple_pt_path (str, optional): Custom .pt file to LOAD (READ-ONLY) stats tuple. If empty, we load stats from the default dataset log in `train_config.load_path`. Defaults to "".
         custom_subset_shuffle_pt_path (str, optional):Custom .pt file to LOAD (READ-ONLY) subset shuffle ids. If empty, we load ids from the default dataset log in `train_config.load_path`. Defaults to "".
     Returns:
@@ -250,6 +238,9 @@ def pressure_estimation_inference(
     train_config = TrainConfig()
     train_config._parsed = True
     train_config._from_yaml(train_yaml_path, unsafe_load=True)
+    if save_path != "":
+        train_config.save_path = save_path
+
     if load_path != "":
         train_config.load_path = load_path
 
@@ -258,7 +249,6 @@ def pressure_estimation_inference(
 
     # add function references, where we mix and match training code.
     dataset_name = extract_dataset_name(gida_config)
-    dataset_names = get_dataset_names(gida_config)
     func_ref = FuncRef(
         start_profiler_fn=partial(WandbStartProfiler(), dataset_name=dataset_name),
         forward_fn=SemiSingleForward(),
@@ -269,7 +259,7 @@ def pressure_estimation_inference(
         post_forward_tf_fn=default_post_foward_transform,
         load_criterion=default_load_criterion,
         load_datasets=partial(
-            load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path
+            load_gida_datasets, custom_stats_tuple_pt_path=custom_stats_tuple_pt_path, custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path, is_training=False
         ),
         # load_datasets=load_dask_datasets,
         load_models=LoadModel(),
@@ -278,25 +268,7 @@ def pressure_estimation_inference(
     )
 
     # Modify function references based on the positional encoding specified, if pe is used
-    pe_technique = train_config.positional_encoding
-    pe_init = train_config.pe_init
-    if pe_technique == "":
-        pass
-    else:
-        if pe_technique == "lspe":
-            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
-        elif pe_technique == "pe-gnn":
-            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
-        else:
-            raise NotImplementedError()
-        if pe_init == "rw":
-            pe_initializer = RWPE_Initializer()
-        elif pe_init == "geo":
-            pe_initializer = GeoPE_Initializer()
-        else:
-            raise NotImplementedError()
-        
-        func_ref.forward_fn = SemiSingleForwardPE(pe_initializer=pe_initializer, pe_supervised=(train_config.pe_task == "supervised"))
+    func_ref = add_pe_to_func_ref(func_ref, train_config)
 
 
     # initialize the ConfigRef which we can call from anywhere
@@ -337,5 +309,4 @@ def pressure_estimation_inference(
         models=models,
         test_metric_fn_dict=get_default_metric_fn_collection(prefix="test", task="semi"),
         plot_pe=True,
-        dataset_names=dataset_names
     )

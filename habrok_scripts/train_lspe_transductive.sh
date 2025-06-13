@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --time=00:30:00
+#SBATCH --time=16:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=train-wdn-pe
-#SBATCH --mem=8000
+#SBATCH --job-name=train-wdn-pe-lspe-transductive
+#SBATCH --mem=128000
 #SBATCH --gpus-per-node=a100:1
 
 module purge
@@ -17,8 +17,7 @@ tar -czf $TMPDIR/code.tar.gz ./*
 cd $TMPDIR
 tar -xzf code.tar.gz
 
-export CUDA_LAUNCH_BLOCKING=1
-python main.py --task train --data_config "gigantic_dataset/arguments/train/data.yaml" --model_config "gigantic_dataset/arguments/train/model_lspe_transductive.yaml"
+python main.py --task train --data_config "gigantic_dataset/arguments/train/data_transductive.yaml" --model_config "gigantic_dataset/arguments/train/model_lspe_transductive.yaml"
 
 tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
 cd $HOME/2025-BSC-s5202841-Daniel-Seidel

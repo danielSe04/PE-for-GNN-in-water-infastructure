@@ -3,7 +3,7 @@ zip_file_paths:
 - '/scratch/hb-gida/data_v3/simgen_Anytown_20241118_1026.zip'
 #- '/scratch/hb-gida/data_v3/simgen_CTOWN_20241104_1719-13694886.zip'
 #- '/scratch/hb-gida/data_v3/simgen_d-town_20241104_1441-13693123.zip'
-#- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
+- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
 #- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
 #- '/scratch/hb-gida/data_v3/simgen_FFCL-1_20241116_1202-merged.zip'
 #- '/scratch/hb-gida/data_v3/simgen_foss_poly_1_20241020_1625.zip'
@@ -59,10 +59,11 @@ split_set: all
 skip_nodes_list: []
 skip_types_list: []
 unstackable_pad_value: 0.0
-bypass_skip_names_in_config: false
+bypass_skip_names_in_config: true
 do_lazy: false
 overwatch: false
 batch_axis_choice: snapshot
 do_cache: false # set True if your RAM can handle the whole array.
 subset_shuffle: true
 split_per_network: true
+sampling_strategy: "random"

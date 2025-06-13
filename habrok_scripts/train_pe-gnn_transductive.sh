@@ -2,7 +2,7 @@
 #SBATCH --time=16:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=train-wdn-pe-lspe-deductive
+#SBATCH --job-name=train-wdn-pe-gnn-transductive
 #SBATCH --mem=128000
 #SBATCH --gpus-per-node=a100:1
 
@@ -17,7 +17,7 @@ tar -czf $TMPDIR/code.tar.gz ./*
 cd $TMPDIR
 tar -xzf code.tar.gz
 
-python main.py --task train --data_config "gigantic_dataset/arguments/train/data_deductive.yaml" --model_config "gigantic_dataset/arguments/train/model_lspe.yaml"
+python main.py --task train --data_config "gigantic_dataset/arguments/train/data_transductive.yaml" --model_config "gigantic_dataset/arguments/train/model_pe-gnn_transductive.yaml"
 
 tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
 cd $HOME/2025-BSC-s5202841-Daniel-Seidel
