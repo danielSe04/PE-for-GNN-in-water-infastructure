@@ -392,8 +392,11 @@ def load_gida_datasets(
     full_gida = GidaV6(**gida_param_dict)
 
     # we perform subset_shuffle prior the custom file. If it is empty, we try to load from dataset_log.pt. If it is failed, we create some and save to dataset_log.pt
-    full_gida.process_subset_shuffle(custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path, create_and_save_to_dataset_log_if_nonexist=True)
-
+    #full_gida.process_subset_shuffle(custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path, create_and_save_to_dataset_log_if_nonexist=True)
+    full_gida.process_subset_shuffle_custom(custom_subset_shuffle_pt_path=custom_subset_shuffle_pt_path,
+                                            sampling_strategy=gida_config.sampling_strategy,
+                                            create_and_save_to_dataset_log_if_nonexist=True)
+    
     train_set, valid_set, test_set = pre_proccessing(
         full_gida=full_gida,
         gida_config=gida_config,

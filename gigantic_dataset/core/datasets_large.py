@@ -29,6 +29,7 @@ from gigantic_dataset.utils.auxil_v8 import (
 import tempfile
 from torch_geometric.data.data import BaseData
 from torch_geometric.data import Dataset, Data, Batch
+from torch.utils.data import Subset
 import pandas as pd
 
 from wntr.network import WaterNetworkModel
@@ -93,6 +94,15 @@ def read_coordinates(file_path: str) -> np.ndarray:
                 y = float(parts[2])
                 coords.append((x,y))
     return np.array(coords)
+
+class GidaSubset(Subset):
+    def __init__(self, dataset: Dataset, indices: list[int]):
+        super().__init__(dataset, indices)
+        assert hasattr(self.dataset, "__getitems__"), "ERROR! Dataset doesnt support batch loading!"
+
+    def __getitems__(self, indices):
+        dataset_indices = [self.indices[i] for i in indices[0]]
+        return self.dataset.__getitems__(dataset_indices)
 
 
 class GidaV6(Dataset):
@@ -242,6 +252,7 @@ class GidaV6(Dataset):
         do_cache: bool = False,
         subset_shuffle: bool = False,
         dataset_log_pt_path: str = r"",
+        sampling_strategy: Literal["default", "random", "subsampling"] = "default",
         **kwargs,
     ) -> None:
         """Correponding to configs.py/GiDaConfig.
@@ -308,6 +319,7 @@ class GidaV6(Dataset):
         self.subset_shuffle = subset_shuffle
         self.train_shuffle_ids, self.val_shuffle_ids, self.test_shuffle_ids = [], [], []
         self.dataset_log_pt_path = dataset_log_pt_path
+        self.sampling_strategy = sampling_strategy
         # allow user customize function here
         self.custom_process()
 
@@ -359,6 +371,87 @@ class GidaV6(Dataset):
                     self.train_ids = new_train_ids
                     self.val_ids = new_val_ids
                     self.test_ids = new_test_ids
+            self.update_indices()
+    
+    def process_subset_shuffle_custom(self, custom_subset_shuffle_pt_path: str = "",
+                                      sampling_strategy: Literal["default", "random", "subsampling"] = "default",
+                                      create_and_save_to_dataset_log_if_nonexist: bool = True):
+        if self.subset_shuffle:
+            if custom_subset_shuffle_pt_path != "":
+                self._load_shuffle_indices_from_disk_internal(path=custom_subset_shuffle_pt_path, sanity_check=True)
+            else:
+                # we first check whether the pt file exists. If yes, we load train/val/test ids
+                if not self.load_shuffle_indices_from_disk(sanity_check=True):
+
+                    if sampling_strategy == "default":
+                        # otherwise, we perform shuffle and store ids in a saving folder
+                        new_train_ids, self.train_shuffle_ids = shuffle_list(self.train_ids)
+                        new_val_ids, self.val_shuffle_ids = shuffle_list(self.val_ids)
+                        new_test_ids, self.test_shuffle_ids = shuffle_list(self.test_ids)
+                    elif sampling_strategy == "random":
+                        start_train_idx = 0
+                        start_val_idx = 0
+                        start_test_idx = 0
+                        new_train_ids = []
+                        new_val_ids = []
+                        new_test_ids = []
+                        for num_samples_per_network in self._num_samples_per_network_list:
+                            num_train = int(num_samples_per_network * self.split_ratios[0])
+                            num_val = int(num_samples_per_network * self.split_ratios[1])
+                            num_test = int(num_samples_per_network * self.split_ratios[2])
+
+                            num_train_samples = int(
+                                self.num_records * self.split_ratios[0] / len(self._num_samples_per_network_list))
+                            num_val_samples = int(
+                                self.num_records * self.split_ratios[1] / len(self._num_samples_per_network_list))
+                            num_test_samples = int(
+                                self.num_records * self.split_ratios[2] / len(self._num_samples_per_network_list))
+
+                            tmp_train_ids, tmp_train_shufle_ids = shuffle_list(
+                                self.train_ids[start_train_idx: start_train_idx + num_train])
+                            new_train_ids.extend(tmp_train_ids[:num_train_samples])
+                            self.train_shuffle_ids.extend([idx + start_train_idx for idx in tmp_train_shufle_ids[:num_train_samples]])
+
+                            tmp_val_ids, tmp_val_shufle_ids = shuffle_list(
+                                self.val_ids[start_val_idx: start_val_idx + num_val])
+                            new_val_ids.extend(tmp_val_ids[:num_val_samples])
+                            self.val_shuffle_ids.extend([idx + start_val_idx for idx in tmp_val_shufle_ids[:num_val_samples]])
+
+                            tmp_test_ids, tmp_test_shufle_ids = shuffle_list(
+                                self.test_ids[start_test_idx: start_test_idx + num_test])
+                            new_test_ids.extend(tmp_test_ids[:num_test_samples])
+                            self.test_shuffle_ids.extend([idx + start_test_idx for idx in tmp_test_shufle_ids[:num_test_samples]])
+
+                            start_train_idx = start_train_idx + num_train
+                            start_val_idx = start_val_idx + num_val
+                            start_test_idx = start_test_idx + num_test
+
+                        # new_train_ids = [idx for sublist in new_train_ids for idx in sublist]
+                        # new_val_ids = [idx for sublist in new_val_ids for idx in sublist]
+                        # new_test_ids = [idx for sublist in new_test_ids for idx in sublist]
+
+                    elif sampling_strategy == "subsampling":
+                        pass
+                        # num_train_samples = int(self.num_records * self.split_ratios[0])
+                        # num_val_samples = int(self.num_records * self.split_ratios[1])
+                        # num_test_samples = int(self.num_records * self.split_ratios[2])
+
+                        # new_train_ids = self.train_shuffle_ids = self.train_ids[::len(self.train_ids) // num_train_samples][:num_train_samples]
+                        # new_val_ids = self.val_shuffle_ids = self.val_ids[::len(self.val_ids) // num_val_samples][:num_val_samples]
+                        # new_test_ids = self.test_shuffle_ids = self.test_ids[::len(self.test_ids) // num_test_samples][:num_test_samples]
+
+                    self.train_ids = new_train_ids
+                    self.val_ids = new_val_ids
+                    self.test_ids = new_test_ids
+
+                    if self.dataset_log_pt_path != "" and create_and_save_to_dataset_log_if_nonexist:
+                        self.save_shuffle_indices_to_disk()
+                    else:
+                        print(
+                            "WARN! Subset shuffle indices cannot be saved as `dataset_log_pt_path` is empty or `do_save_to_dataset_log` is set to False in Gida Interface! You cannot re-load these ids in the inference or next train!",
+                            # noqa: E501
+                            flush=True,
+                        )
             self.update_indices()
 
     def save_shuffle_indices_to_disk(self) -> None:
@@ -1014,9 +1107,10 @@ class GidaV6(Dataset):
     def get(self, idx: int | Sequence) -> Any:
         # return Data or list[Data]
         if isinstance(idx, int):
-            fids: list[int] = [idx]
+            fids: list[int] = self._indices[idx]
         else:
-            fids: list[int] = list(idx)
+            idx_list = np.asarray(idx).flatten().tolist()
+            fids: list[int] = [self._indices[i] for i in idx_list]
 
         batch_size = len(fids)
 
@@ -1062,9 +1156,15 @@ class GidaV6(Dataset):
         assert counter == batch_size
         return batch  # type:ignore
 
+    def indices(self) -> Sequence:
+        assert self._indices is not None
+        return self._indices    
+
+
+
     def __getitem__(
-        self,
-        idx: Union[int, np.integer, IndexType],
+            self,
+            idx: Union[int, np.integer, IndexType],
     ) -> Union["Dataset", BaseData]:
         r"""In case :obj:`idx` is of type integer, will return the data object
         at index :obj:`idx` (and transforms it in case :obj:`transform` is
@@ -1073,8 +1173,10 @@ class GidaV6(Dataset):
         tuple, or a :obj:`torch.Tensor` or :obj:`np.ndarray` of type long or
         bool, will return a subset of the dataset at the specified indices.
         """
-        if isinstance(idx, (int, np.integer)) or (isinstance(idx, Tensor) and idx.dim() == 0) or (isinstance(idx, np.ndarray) and np.isscalar(idx)):
-            data = self.get(self.indices()[idx])[0]  # type:ignore
+        if isinstance(idx, (int, np.integer)) or (isinstance(idx, Tensor) and idx.dim() == 0) or (
+                isinstance(idx, np.ndarray) and np.isscalar(idx)):
+            # data = self.get(self.indices()[idx])[0]  # type:ignore
+            data = self.get([idx])[0]  # type:ignore
             data = data if self.transform is None else self.transform(data)
             return data
 
@@ -1085,9 +1187,33 @@ class GidaV6(Dataset):
 
     def __getitems__(self, idx: Union[int, np.integer, IndexType]) -> list[BaseData]:
         # return self.get(idx)  # type:ignore
-        batch: list[BaseData] = self.get(idx[0])  # type:ignore
+        # batch: list[BaseData] = self.get(idx[0])  # type:ignore
+        batch: list[BaseData] = self.get(idx)  # type:ignore
+
         batch = batch if self.transform is None else [self.transform(dat) for dat in batch]
         return batch
+
+    def get_ids_per_network(self) -> list[list[int]]:
+        fids = np.asarray(list(self._index_map.keys()))
+        
+        flatten_index = 0
+        ids = self._indices
+        id_map = {idx: i for i, idx in enumerate(ids)}
+
+        ids_per_network = []
+        for nid, _ in enumerate(self._roots):
+            # Get all possible indices
+            network_num_samples = self._num_samples_per_network_list[nid]
+            network_flatten_ids = fids[flatten_index : flatten_index + network_num_samples]
+            flatten_index += network_num_samples
+
+            # Compute intersection with test ids
+            ids_per_network.append(list(set(network_flatten_ids).intersection(ids)))
+        # This is necessary because of the logic in __getitems__:
+        real_ids_per_network = []
+        for ids in ids_per_network:
+            real_ids_per_network.append([id_map[id] for id in ids])
+        return real_ids_per_network
 
     def gather_statistic(
         self,
@@ -1133,7 +1259,7 @@ class GidaV6(Dataset):
 
         cat_arrays: list[dac.Array] = []
 
-        batch_indices = np.array_split(self._indices, num_batches)
+        batch_indices = np.array_split(np.arange(len(self.indices())), num_batches)
 
         selected_attr_key = which_array_attr_map[which_array]
         for bids in batch_indices:
