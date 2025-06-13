@@ -29,7 +29,7 @@ from gigantic_dataset.utils.train_utils import (
     get_default_metric_fn_collection,
     find_latest_files,
 )
-from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE, PE_GATResMeanConv
+from gigantic_dataset.model.gatres import LoadModel, GATResMeanConvLSPE, PE_concat_GATResMeanConv
 
 
 from torch_geometric.data import Data
@@ -149,7 +149,7 @@ def pressure_estimation(
         if pe_technique == "lspe":
             func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
         elif pe_technique == "pe-gnn":
-            func_ref.load_models = partial(LoadModel(), model_class=PE_GATResMeanConv, pe_dim=train_config.pe_dim)
+            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
         else:
             raise NotImplementedError()
         if pe_init == "rw":
@@ -286,7 +286,7 @@ def pressure_estimation_inference(
         if pe_technique == "lspe":
             func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
         elif pe_technique == "pe-gnn":
-            func_ref.load_models = partial(LoadModel(), model_class=PE_GATResMeanConv, pe_dim=train_config.pe_dim)
+            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
         else:
             raise NotImplementedError()
         if pe_init == "rw":
