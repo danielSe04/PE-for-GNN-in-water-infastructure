@@ -39,3 +39,6 @@ The PE initializers (SPE, LSPE, PE-GNN), as well as the Equiformer model are con
 6. `aux_loss_alpha` is a hyperparameter that the auxiliary loss is multiplied with, that is, it determines the weight of the auxiliary learning task. The total loss then has the formula $\text{total\_loss} = \text{loss} + \text{aux\_loss\_alpha} * \text{aux\_loss}$
 
 Any utility functions used in connection to the positional encodings are contained in the `pe_utils` file.
+
+## Coordinates
+Other than the datasets, which are on Habrok, the coordinates are stored directly in the code base. The only exception is L-TOWN, since its coordinate file is too large to upload to github. If L-TOWN is to be used, its coordinate file must be added manually.
