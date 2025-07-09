@@ -9,20 +9,19 @@ model_configs:
 
 pe_config: 
     !!python/object:gigantic_dataset.utils.configs.PEConfig
-    pe_technique: lspe
-    pe_init: "rw"
+    pe_technique: concat
+    pe_init: "spe"
     pe_dim: 20
-    pe_task: supervised
-    aux_criterion: laplacian
-    aux_loss_alpha: 0.5
+    pe_task: semi
+    aux_criterion: ''
+    aux_loss_alpha: 0
 
-
-lr: 0.0005
+lr: 0.00001
 weight_decay: 0.00001
-epochs: 1000
+epochs: 200
 mask_rate: 0.95
 criterion: mse
-batch_size: 1024  # this can be 120 in habrok
+batch_size: 16  # this can be 120 in habrok
 use_data_batch: true
 device: cuda
 norm_type:  znorm
@@ -31,4 +30,4 @@ log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe-transductive'  # to distinguish two wandb runs
+run_prefix: 'spe-inductive'  # to distinguish two wandb runs

@@ -452,10 +452,20 @@ class ModelConfig(AbstractConfig):
     weight_path: str = ""  # path storing the model weights.  If empty, we use a new model
     # do_load: bool = False  # load weights of the model
 
+class PEConfig(AbstractConfig):
+    # By default, the PE is turned off
+    pe_technique: Literal["", "lspe", "concat", "equiformer"] = "" # They type of model used / how the PE is added to the model.
+    pe_init: Literal["", "rw", "geo", "spe"] = "" # The initialization method. These will be initialized if set, but matching pe_technique must be used to actually utilize it in the model.
+    pe_dim: int = 0
+    pe_task: Literal["", "supervised", "semi"] = "" # How the PE is added to the model
+    aux_criterion: Literal["", "mse", "laplacian", "morans-i"] = "" # The criterion used in the auxiliary learning task
+    aux_loss_alpha: int = 0 # The weight auf the loss of the auxiliary learning task.s
+
 
 class TrainConfig(AbstractConfig):
     # do_load: bool = False  # flag represents temporarily global setting for all mdoels
     model_configs: list[ModelConfig] = []  # involving DL models in this train
+    pe_config: PEConfig
     lr: float = 0.01  # 0.01 #Learning rate. Default is 0.0005
     weight_decay: float = 5e-4  # weight decay. Default is 0.000006
     epochs: int = 10  # 0 #number of epochs to train the model
@@ -467,16 +477,6 @@ class TrainConfig(AbstractConfig):
     norm_type: Literal["znorm", "minmax", "unused"] = "unused"  # normalization type. Support znorm| minmax|unused"
     norm_on: list[Literal["node", "edge", "label", "edge_label"]] = ["node"]
     task: Literal["supervised", "semi"] = "semi"  # current supporting task
-    """########### Positional encoding settings ###########""" #TODO refactor this into something like ModelConfig
-    positional_encoding: Literal["", "lspe", "pe-gnn"] = "" #Turned off by default
-    pe_init: Literal["rw", "geo"] = "rw" #
-    pe_dim: int = 0
-    pe_task: Literal["supervised", "semi"] = "semi"
-    pe_criterion: Literal["mse", "laplacian", "morans-i"] = "mse" # Only use laplacia on fully supervised pe
-    pe_loss_alpha: int = 0
-    subgraphing: bool = False # Decide whether knn subgraphing is used
-    k: int = 5 # For knn subgraphing
-    batch_size_subgraph: int = 1024
     """###########################TRACKING EXPERIMENTS SETTINGS################################"""
     log_method: str = ""  # log method! Support wandb or ''
     # log_gradient: bool = False #flag indicates keeping track of gradient flow

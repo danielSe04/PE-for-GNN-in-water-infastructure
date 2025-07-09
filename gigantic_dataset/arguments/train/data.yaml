@@ -1,9 +1,9 @@
 zip_file_paths:
 #- '/scratch/hb-gida/data_v3/simgen_19_Pipe_System_20241101_1823.zip'
 - '/scratch/hb-gida/data_v3/simgen_Anytown_20241118_1026.zip'
-#- '/scratch/hb-gida/data_v3/simgen_CTOWN_20241104_1719-13694886.zip'
-#- '/scratch/hb-gida/data_v3/simgen_d-town_20241104_1441-13693123.zip'
-- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
+- '/scratch/hb-gida/data_v3/simgen_CTOWN_20241104_1719-13694886.zip'
+- '/scratch/hb-gida/data_v3/simgen_d-town_20241104_1441-13693123.zip'
+#- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
 #- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
 #- '/scratch/hb-gida/data_v3/simgen_FFCL-1_20241116_1202-merged.zip'
 #- '/scratch/hb-gida/data_v3/simgen_foss_poly_1_20241020_1625.zip'
@@ -12,8 +12,8 @@ zip_file_paths:
 #- '/scratch/hb-gida/data_v3/simgen_KL_20241102_1932-13681746.zip'
 #- '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
 #- '/scratch/hb-gida/data_v3/simgen_ky1_20241116_1715-merged.zip'
-#- '/scratch/hb-gida/data_v3/simgen_ky13_20241105_1132-13705173.zip'
-#- '/scratch/hb-gida/data_v3/simgen_ky14_20241105_1107-13704936.zip'
+- '/scratch/hb-gida/data_v3/simgen_ky13_20241105_1132-13705173.zip'
+- '/scratch/hb-gida/data_v3/simgen_ky14_20241105_1107-13704936.zip'
 #- '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
 #- '/scratch/hb-gida/data_v3/simgen_ky18_20241107_1511.zip'
 #- '/scratch/hb-gida/data_v3/simgen_ky2_20241111_1250.zip'
@@ -34,7 +34,7 @@ zip_file_paths:
 #- '/scratch/hb-gida/data_v3/simgen_ky3_20241121_1512.zip'
 #- '/scratch/hb-gida/data_v3/simgen_balerma_20241028_1133-merged.zip'
 #- '/scratch/hb-gida/data_v3/simgen_L-TOWN_Real_20241108_1942-13761971.zip'
-#- '/scratch/hb-gida/data_v3/simgen_ky8_20241120_230_20241104_175.zip'
+- '/scratch/hb-gida/data_v3/simgen_ky8_20241120_230_20241104_175.zip'
 #- '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
 
 #- '/scratch/simgen_Anytown_20240524_1202_csvdir_20240527_1205.zip'
@@ -51,7 +51,7 @@ label_attrs: []
 edge_label_attrs: []
 input_paths: []
 num_records: 100 #this number will be divided into 60%train-20%val-20%test
-chunk_limit: 5
+chunk_limit: 120
 selected_snapshots: null
 verbose: false
 split_type: scene
@@ -59,7 +59,7 @@ split_set: all
 skip_nodes_list: []
 skip_types_list: []
 unstackable_pad_value: 0.0
-bypass_skip_names_in_config: true
+bypass_skip_names_in_config: false
 do_lazy: false
 overwatch: false
 batch_axis_choice: snapshot

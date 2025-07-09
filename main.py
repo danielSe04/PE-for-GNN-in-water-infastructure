@@ -20,6 +20,8 @@ if __name__ == '__main__':
     parser.add_argument('--model_config', default="", type=str)
     parser.add_argument('--load_path', default="", type=str)
     parser.add_argument('--custom_stats_tuple_pt_path', default="", type=str)
+    parser.add_argument('--custom_subset_shuffle_pt_path', default="", type=str)
+    parser.add_argument('--train_per_network', action='store_true')
     args = parser.parse_args()
 
     assert args.task in ['train', 'inference'], "'--task' argument is required."
@@ -31,24 +33,31 @@ DATA_CONFIG = args.data_config
 MODEL_CONFIG = args.model_config
 LOAD_PATH = args.load_path
 CUSTOM_STATS_TUPLE_PT_PATH = args.custom_stats_tuple_pt_path
+CUSTOM_SUBSET_SHUFFLE_PT_PATH = args.custom_subset_shuffle_pt_path
+TRAIN_PER_NETWORK = args.train_per_network
+
+if not LOAD_PATH == "":
+    assert os.path.exists(LOAD_PATH), "'--load_path' must be a valid path or empty."
+if not CUSTOM_STATS_TUPLE_PT_PATH == "":
+    assert os.path.exists(CUSTOM_STATS_TUPLE_PT_PATH), "'--custom_stats_tuple_pt_path' must be a valid path or empty."
+if not CUSTOM_SUBSET_SHUFFLE_PT_PATH == "":
+    assert os.path.exists(CUSTOM_SUBSET_SHUFFLE_PT_PATH), "'--custom_subset_shuffle_pt_path' must be a valid path or empty."
 
 if TASK == "train":
     pressure_estimation(
         DATA_CONFIG,
         MODEL_CONFIG,
         load_path=LOAD_PATH,
-        custom_stats_tuple_pt_path=CUSTOM_STATS_TUPLE_PT_PATH
+        custom_stats_tuple_pt_path=CUSTOM_STATS_TUPLE_PT_PATH,
+        custom_subset_shuffle_pt_path=CUSTOM_SUBSET_SHUFFLE_PT_PATH,
+        train_per_network=TRAIN_PER_NETWORK
     )
+
 elif TASK == "inference":
-    if not LOAD_PATH == "":
-        assert os.path.exists(LOAD_PATH), "--load_path must be a valid path or empty."
-    if not CUSTOM_STATS_TUPLE_PT_PATH == "":
-        assert os.path.exists(CUSTOM_STATS_TUPLE_PT_PATH), "--custom_stats_tuple_pt_path must be a valid path or empty."
-    pressure_estimation_inference(
+   pressure_estimation_inference(
         DATA_CONFIG,
         MODEL_CONFIG,
         load_path=LOAD_PATH,
         custom_stats_tuple_pt_path=CUSTOM_STATS_TUPLE_PT_PATH,
-        custom_subset_shuffle_pt_path=r""
-        # custom_subset_shuffle_pt_path=r"/scratch/p303753/GDS_OUTPUTS/experiments_logs/single-10k+ZJ+gatres+20250302_1646/gida_dataset_log.pt"
+        custom_subset_shuffle_pt_path=CUSTOM_SUBSET_SHUFFLE_PT_PATH,
     )

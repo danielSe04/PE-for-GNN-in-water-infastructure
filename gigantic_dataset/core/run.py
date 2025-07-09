@@ -8,9 +8,7 @@
 
 from __future__ import annotations
 from copy import deepcopy
-import os
 from typing import Any, Callable
-from torch import Tensor
 from torch_geometric.data import Dataset
 from gigantic_dataset.utils.configs import TrainConfig, GidaConfig
 from gigantic_dataset.core.train import train, eval, TrainOneEpoch, TestOneEpoch, WandbStartProfiler, SemiSingleForward, SemiSingleForwardPE
@@ -70,20 +68,23 @@ def extract_dataset_name(gida_config: GidaConfig) -> str:
     return dataset_name
 
 def add_pe_to_func_ref(func_ref, train_config: TrainConfig):
-    pe_technique = train_config.positional_encoding
+    '''
+    Helper function that modifies the func_ref object based on the configuration of the positional encoding.
+    '''
+    pe_technique = train_config.pe_config.pe_technique
     if pe_technique == "":
         return func_ref
     if pe_technique == "equiformer":
-        func_ref.load_models = partial(LoadModel(), model_class=EquiformerMeanConv, pe_dim=0)
+        func_ref.load_models = partial(LoadModel(), model_class=EquiformerMeanConv)
         func_ref.forward_fn = partial(SemiSingleForward(), pass_coordinates=True)
     else:
         if pe_technique == "lspe":
-            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE, pe_dim=train_config.pe_dim)
+            func_ref.load_models = partial(LoadModel(), model_class=GATResMeanConvLSPE)
         elif pe_technique == "pe-gnn" or pe_technique == "concat":
-            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv, pe_dim=train_config.pe_dim)
+            func_ref.load_models = partial(LoadModel(), model_class=PE_concat_GATResMeanConv)
         else:
             raise NotImplementedError()
-        func_ref.forward_fn = SemiSingleForwardPE(pe_supervised=(train_config.pe_task == "supervised"))
+        func_ref.forward_fn = SemiSingleForwardPE(pe_supervised=(train_config.pe_config.pe_task == "supervised"))
     return func_ref
         
 def pressure_estimation(
@@ -93,6 +94,7 @@ def pressure_estimation(
     load_path: str = "",
     custom_stats_tuple_pt_path: str = "",
     custom_subset_shuffle_pt_path: str = "",
+    train_per_network: bool = False,
 ) -> Any:
     """prepare for the pressure estimation task on gida
 
@@ -103,6 +105,7 @@ def pressure_estimation(
         load_path (str, optional): to override train_config.load_path. If both are blank, model weights are initialized randomly. Defaults to "".
         custom_stats_tuple_pt_path (str, optional): Custom .pt file to LOAD (READ-ONLY) stats tuple. If empty, we load stats from the default dataset log in `train_config.load_path`. Defaults to "".
         custom_subset_shuffle_pt_path (str, optional):Custom .pt file to LOAD (READ-ONLY) subset shuffle ids. If empty, we load ids from the default dataset log in `train_config.load_path`. Defaults to "".
+        train_per_network (bool, optional): If this is set to true, we train one separate model for each network.
     Returns:
         Any: return dict if possible
     """
@@ -190,17 +193,19 @@ def pressure_estimation(
         models=models,
         train_metric_fn_dict=get_default_metric_fn_collection(prefix="train", task="semi"),
         val_metric_fn_dict=get_default_metric_fn_collection(prefix="val", task="semi"),
+        train_per_network=train_per_network,
     )
     # temporarily comment for fast check
     # TODO: If you wish to switch wandb project, we must re-call start profiler fn and override the project name
     func_ref.start_profiler_fn(dataset_name=dataset_name, overriden_project_name=train_config.project_name.replace("train", "test"))
-
+    models = ret_dict["models"] # type: ignore
     # test
     func_ref.eval_fn(
         datasets=datasets,
         models=models,
         test_metric_fn_dict=get_default_metric_fn_collection(prefix="test", task="semi"),
-        plot_pe=True
+        plot_pe=True,
+        match_models_to_networks=train_per_network
     )
 
     return ret_dict

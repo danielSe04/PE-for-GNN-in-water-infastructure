@@ -63,14 +63,26 @@ def parse2data(x: np.ndarray, edge_index: np.ndarray, edge_attr: Optional[np.nda
     return data
 
 def get_dataset_name_from_zip_file_path(zip_file_path: str) -> str:
+    '''
+    Helper function to get the name of a dataset from a zip_file_path.
+    '''
     basename = os.path.basename(zip_file_path)
     segments = basename.split("_")
     if len(segments) >= 2:
         return segments[1]
     return basename
 
-def read_coordinates(file_path: str) -> np.ndarray:
+def read_coordinates(file_path: str, skip_names: list[str]) -> np.ndarray:
+    '''
+    Reads the coordinates from a given file and returns them.
+
+    Args:
+        file_path (str): The complete path to the file of coordinates.
+        skip_names (list[str]): Identifiers of nodes whose coordinates should not be read.
+    Returns: np.ndarray, the array of coordinates.
+    '''
     assert os.path.isfile(file_path), f"Cannot load coordinates from file path {file_path}"
+    skip_names_set = set(skip_names)
     with open(file_path, "r") as f:
         lines = f.readlines()
     
@@ -92,17 +104,28 @@ def read_coordinates(file_path: str) -> np.ndarray:
             if len(parts) == 3:
                 x = float(parts[1])
                 y = float(parts[2])
-                coords.append((x,y))
+                if not parts[0] in skip_names_set:
+                    coords.append((x,y))
     return np.array(coords)
 
 class GidaSubset(Subset):
+    '''
+    This class implements a subset of the indices of a dataset forwarding the correct indices to the actual dataset.
+    '''
     def __init__(self, dataset: Dataset, indices: list[int]):
         super().__init__(dataset, indices)
-        assert hasattr(self.dataset, "__getitems__"), "ERROR! Dataset doesnt support batch loading!"
 
-    def __getitems__(self, indices):
-        dataset_indices = [self.indices[i] for i in indices[0]]
-        return self.dataset.__getitems__(dataset_indices)
+    def __getitems__(self, indices: Union[int, np.integer, IndexType]):
+        '''
+        Translates the received indices to the corresponding indices in the datasets, and sends the latter to the dataset.
+        '''
+        assert hasattr(self.dataset, "__getitems__"), "ERROR! Dataset doesnt support batch loading!"
+        if isinstance(indices, int):
+            dataset_indices = [self.indices[indices]]
+        else:
+            idx_list = np.asarray(indices).flatten().tolist()
+            dataset_indices = [self.indices[i] for i in idx_list]
+        return self.dataset.__getitems__(dataset_indices) # type: ignore
 
 
 class GidaV6(Dataset):
@@ -841,13 +864,10 @@ class GidaV6(Dataset):
                 edge_index = np.zeros([2, 0], dtype=np.int_)  # type:ignore
 
             root.edge_index = edge_index
-            #print("Edge index in root:", root.edge_index)
 
             coords_file_name = get_dataset_name_from_zip_file_path(zip_file_path)
             #TODO make this path variable
-            root.coordinates = read_coordinates(os.path.join("coords", coords_file_name + ".inp"))
-            # print("Coordinates after reading:", root.coordinates.shape)
-            # print(root.coordinates)
+            root.coordinates = read_coordinates(os.path.join("coords", coords_file_name + ".inp"), root.attrs["skip_names"])
 
         self._is_init_root = True
 
@@ -1126,19 +1146,16 @@ class GidaV6(Dataset):
             if counter >= max_count:
                 break
             x = node_array[i]
-            #print("size of x at get:", x.shape)
             edge_attr = edge_array[i] if edge_array is not None else None
             y = label_array[i] if label_array is not None else None
             edge_y = edge_label_array[i] if edge_label_array is not None else None
             edge_index: np.ndarray = root.edge_index  # self._roots[self._network_map[i]].edge_index  # type:ignore
+            assert root.coordinates is not None, "Coordinates were not loaded."
             if len(x) > len(root.coordinates):
                 print(f"Difference of lengths for nodes and coordinates in file {root.zip_file_path}, {len(x)}, {len(root.coordinates)}. Padding coordinates")
                 for i in range(len(x) - len(root.coordinates)):
                     root.coordinates = np.append(root.coordinates, np.array([[0.0, 0.0]]), axis=0)
-            node_coordinates: np.ndarray = root.coordinates
-            #print("size of coordinates at get:", node_coordinates.shape)
-            
-            # print(edge_index)
+            node_coordinates: np.ndarray = root.coordinates            
 
             dat = parse2data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, edge_y=edge_y, coordinates=node_coordinates)
             batch.append(dat)
@@ -1208,10 +1225,16 @@ class GidaV6(Dataset):
         return batch
 
     def get_ids_per_network(self) -> list[list[int]]:
+        '''
+        This function returns the indices of the ids in the dataset grouped per network.
+        It takes the indices of the ids because of the logic in getitems, which will translate them to the correct ids.
+        '''
+
         fids = np.asarray(list(self._index_map.keys()))
         
         flatten_index = 0
         ids = self._indices
+        assert ids is not None
         id_map = {idx: i for i, idx in enumerate(ids)}
 
         ids_per_network = []
@@ -1223,6 +1246,7 @@ class GidaV6(Dataset):
 
             # Compute intersection with test ids
             ids_per_network.append(list(set(network_flatten_ids).intersection(ids)))
+        # Translate the ids to their position in the indices of the dataset.
         # This is necessary because of the logic in __getitems__:
         real_ids_per_network = []
         for ids in ids_per_network:
@@ -1601,7 +1625,7 @@ class GidaV5(Dataset):
         # data_list: list[Data] = self.parse_fn(node_array_np, edge_index_np, edge_array_np, label_array_np, edge_label_array_np)
         # return data_list[0]
 
-        data = parse2data(x=node_array_np, edge_index=edge_index_np, edge_attr=edge_array_np, y=label_array_np, edge_y=edge_label_array_np)
+        data = parse2data(x=node_array_np, edge_index=edge_index_np, edge_attr=edge_array_np, y=label_array_np, edge_y=edge_label_array_np, coordinates=None)
         return data
 
     def sort_and_filter_key_order(self, root: Root, attrs: list[str | tuple]) -> tuple[list[str | tuple], list[bool]]:

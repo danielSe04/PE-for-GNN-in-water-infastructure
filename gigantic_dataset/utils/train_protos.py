@@ -7,7 +7,7 @@
 #
 
 import os
-from typing import Any, Callable, Literal, Optional, Protocol
+from typing import Any, Callable, Literal, Optional, Protocol, Union
 
 # from gigantic_dataset.core.datasets_nsf import GidaV6_NSF
 from gigantic_dataset.utils.configs import TrainConfig, ModelConfig, GidaConfig  # , GidaNSFConfig,
@@ -67,7 +67,7 @@ class StartProfilerProto(Protocol):
 
 
 class ForwardProto(Protocol):
-    def __call__(self, models: list[nn.Module], data: Data, batch_mask: Tensor, **kwargs: Any) -> tuple[Any, Any, Any | None]:
+    def __call__(self, models: list[nn.Module], data: Data, batch_mask: Tensor, **kwargs: Any) -> Union[tuple[Any, Any, Any | None], tuple[Any, Any, Any | None, Any, Any, Any]]:
         raise NotImplementedError()
 
 
@@ -80,7 +80,7 @@ class TrainOneEpochProto(Protocol):
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
         **kwargs: Any,
-    ) -> tuple[float, dict, Any]:
+    ) -> tuple[float, dict, Any, float, Any | None]:
         raise NotImplementedError()
 
 
@@ -92,7 +92,7 @@ class TestOneEpochProto(Protocol):
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
         **kwargs: Any,
-    ) -> tuple[float, dict, Any]:
+    ) -> tuple[float, dict, Any, float]:
         raise NotImplementedError()
 
 
@@ -103,6 +103,7 @@ class TrainProto(Protocol):
         datasets: list[Dataset],
         train_metric_fn_dict: dict[str, Callable],
         val_metric_fn_dict: dict[str, Callable],
+        train_per_network: bool = False,
         **kwargs: Any,
     ) -> Any | None:
         raise NotImplementedError()
@@ -111,7 +112,7 @@ class TrainProto(Protocol):
 class EvalProto(Protocol):
     def __call__(
         self,
-        models: list[nn.Module],
+        models: list[nn.Module] | list[list[nn.Module]],
         datasets: list[Dataset],
         test_metric_fn_dict: dict[str, Callable],
         **kwargs: Any,
@@ -386,7 +387,7 @@ def load_gida_datasets(
 
     # default path (if empty, we create)
     if is_training:
-        defaut_dataset_log_pt_path = osp.join(ConfigRef.config.load_path, "gida_dataset_log.pt")
+        defaut_dataset_log_pt_path = osp.join(ConfigRef.config.save_path, "gida_dataset_log.pt")
         gida_config.dataset_log_pt_path = defaut_dataset_log_pt_path
 
     # call interface and implicitly load subset shuffle ids from the custom path

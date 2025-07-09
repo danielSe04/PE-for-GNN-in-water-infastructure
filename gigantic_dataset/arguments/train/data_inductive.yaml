@@ -15,7 +15,7 @@ label_attrs: []
 edge_label_attrs: []
 input_paths: []
 num_records: 3000 #this number will be divided into 60%train-20%val-20%test - 1000 per network
-chunk_limit: 5
+chunk_limit: 120
 selected_snapshots: null
 verbose: false
 split_type: scene
@@ -23,7 +23,7 @@ split_set: all
 skip_nodes_list: []
 skip_types_list: []
 unstackable_pad_value: 0.0
-bypass_skip_names_in_config: true
+bypass_skip_names_in_config: false
 do_lazy: false
 overwatch: false
 batch_axis_choice: snapshot

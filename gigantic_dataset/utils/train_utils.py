@@ -16,13 +16,15 @@ import wandb
 from torch_geometric.data import Data
 from torch_geometric.transforms import BaseTransform
 from gigantic_dataset.utils.configs import TrainConfig
+from gigantic_dataset.core.datasets_large import GidaSubset
 from datetime import datetime
 
 from torch_geometric.data import Dataset, Batch
 from torch.utils.data import BatchSampler, RandomSampler, SequentialSampler
 from torch_geometric.loader import DataLoader as GraphDataLoader
 
-from torch.utils.data import DataLoader as InstanceDataLoader, TensorDataset
+from torch.utils.data import DataLoader as InstanceDataLoader, TensorDataset, Subset
+
 import sys
 
 import re
@@ -579,3 +581,22 @@ def wrapper_data_loader(
         loader = GraphDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
 
     return loader
+
+def get_data_loader_per_network(datasets: list[Dataset] | Dataset, batch_size: int) -> list[list[GraphDataLoader]]:
+    '''
+    Creates on data loader per network and dataset in the input.
+    Returns:
+        list[list[GraphDataLoader]]: A list of data loaders per network (inner list) for every dataset (outer list).
+    '''
+    if isinstance(datasets, Dataset):
+        datasets = [datasets]
+    data_loaders = []
+    for dataset in datasets:
+        ids_per_network: list[list[int]] = dataset.get_ids_per_network() # type: ignore
+        topology_loaders = []
+        for nid, ids in enumerate(ids_per_network):
+            topology_loader = wrapper_data_loader(GidaSubset(dataset=dataset, indices=ids), sampling_strategy="batch", batch_size=batch_size, shuffle=False, pin_memory=False) # type: ignore
+            assert isinstance(topology_loader, GraphDataLoader)
+            topology_loaders.append(topology_loader)
+        data_loaders.append(topology_loaders)
+    return data_loaders

@@ -6,6 +6,9 @@ model_configs:
     name: gatres
     act: relu # unfunctional
     has_final_linear: false # unfunctional
+pe_config: 
+    !!python/object:gigantic_dataset.utils.configs.PEConfig
+    pe_technique: ""
 lr: 0.0005
 weight_decay: 0.00001
 epochs: 1000
@@ -16,7 +19,6 @@ use_data_batch: false
 device: cuda
 norm_type:  znorm
 task: semi
-positional_encoding: ""
 log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training

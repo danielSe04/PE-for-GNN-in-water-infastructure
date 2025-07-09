@@ -1,5 +1,6 @@
 .env/
 gigantic_dataset/*/__pycache__/
+gigantic_dataset/*/*/__pycache__
 wandb/
 slurm-*.out
 gigantic_dataset/experiments_logs/*

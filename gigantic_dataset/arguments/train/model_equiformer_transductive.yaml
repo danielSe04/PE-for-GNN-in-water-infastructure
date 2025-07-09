@@ -2,28 +2,27 @@ model_configs:
 - !!python/object:gigantic_dataset.utils.configs.ModelConfig
     weight_path: ''  
     num_layers: 15  # in habrok should be 15
-    nc: 32
+    nc: 8
     name: gatres
     act: relu # unfunctional
     has_final_linear: false # unfunctional
 
 pe_config: 
     !!python/object:gigantic_dataset.utils.configs.PEConfig
-    pe_technique: lspe
-    pe_init: "rw"
-    pe_dim: 20
-    pe_task: supervised
-    aux_criterion: laplacian
-    aux_loss_alpha: 0.5
-
+    pe_technique: equiformer
+    pe_init: ""
+    pe_dim: 0
+    pe_task: semi
+    aux_criterion: ''
+    aux_loss_alpha: 0
 
 lr: 0.0005
 weight_decay: 0.00001
 epochs: 1000
 mask_rate: 0.95
 criterion: mse
-batch_size: 1024  # this can be 120 in habrok
-use_data_batch: true
+batch_size: 28  # this can be 120 in habrok
+use_data_batch: false
 device: cuda
 norm_type:  znorm
 task: semi
@@ -31,4 +30,4 @@ log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe-transductive'  # to distinguish two wandb runs
+run_prefix: 'equiformer_transductive'  # to distinguish two wandb runs

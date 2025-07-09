@@ -1,0 +1,1 @@
+All files in this folder are taken from the original Equiformer implementation (https://github.com/atomicarchitects/equiformer). Only graph_attention_transformer.py is adapted to provide an interface that is similar to that of GAT. For further documentation, confer the full paper (Huang et al. (2023)).

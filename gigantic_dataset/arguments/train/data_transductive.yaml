@@ -1,37 +1,37 @@
 zip_file_paths:
-- '/scratch/hb-gida/data_v3/simgen_19_Pipe_System_20241101_1823.zip'
+#- '/scratch/hb-gida/data_v3/simgen_19_Pipe_System_20241101_1823.zip'
 - '/scratch/hb-gida/data_v3/simgen_Anytown_20241118_1026.zip'
 - '/scratch/hb-gida/data_v3/simgen_CTOWN_20241104_1719-13694886.zip'
 - '/scratch/hb-gida/data_v3/simgen_d-town_20241104_1441-13693123.zip'
-#- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
-- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
-- '/scratch/hb-gida/data_v3/simgen_FFCL-1_20241116_1202-merged.zip'
-- '/scratch/hb-gida/data_v3/simgen_foss_poly_1_20241020_1625.zip'
-- '/scratch/hb-gida/data_v3/simgen_hanoi_20241019_2315.zip'
-- '/scratch/hb-gida/data_v3/simgen_Jilin_20241020_0938.zip'
-- '/scratch/hb-gida/data_v3/simgen_KL_20241102_1932-13681746.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky1_20241116_1715-merged.zip'
+# #- '/scratch/hb-gida/data_v3/simgen_EPANET_Net_3_20241021_2017.zip'
+# #- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
+# - '/scratch/hb-gida/data_v3/simgen_FFCL-1_20241116_1202-merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_foss_poly_1_20241020_1625.zip'
+#- '/scratch/hb-gida/data_v3/simgen_hanoi_20241019_2315.zip'
+# - '/scratch/hb-gida/data_v3/simgen_Jilin_20241020_0938.zip'
+# - '/scratch/hb-gida/data_v3/simgen_KL_20241102_1932-13681746.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky1_20241116_1715-merged.zip'
 - '/scratch/hb-gida/data_v3/simgen_ky13_20241105_1132-13705173.zip'
 - '/scratch/hb-gida/data_v3/simgen_ky14_20241105_1107-13704936.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
-#- '/scratch/hb-gida/data_v3/simgen_ky18_20241107_1511.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky2_20241111_1250.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky24_v_20241023_1834.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky4_20241113_1735.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky5_20241104_1751.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky6_20241107_1509.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky7_20241107_1508.zip'
-- '/scratch/hb-gida/data_v3/simgen_modena_20241116_1955-merged.zip'
-- '/scratch/hb-gida/data_v3/simgen_new_york_20241019_2308.zip'
-- '/scratch/hb-gida/data_v3/simgen_NPCL-1_20241101_1720-13665150.zip'
-- '/scratch/hb-gida/data_v3/simgen_OBCL-1_20241116_1713-merged.zip'
-- '/scratch/hb-gida/data_v3/simgen_RuralNetwork_20241102_1927-13681717.zip'
-- '/scratch/hb-gida/data_v3/simgen_WA1_20241030_1443-13622940.zip'
-- '/scratch/hb-gida/data_v3/simgen_ZJ_20241028_1906-merged.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky3_20241121_1512.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
+# #- '/scratch/hb-gida/data_v3/simgen_ky18_20241107_1511.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky2_20241111_1250.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky24_v_20241023_1834.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky4_20241113_1735.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky5_20241104_1751.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky6_20241107_1509.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky7_20241107_1508.zip'
+# - '/scratch/hb-gida/data_v3/simgen_modena_20241116_1955-merged.zip'
+#- '/scratch/hb-gida/data_v3/simgen_new_york_20241019_2308.zip'
+# - '/scratch/hb-gida/data_v3/simgen_NPCL-1_20241101_1720-13665150.zip'
+# - '/scratch/hb-gida/data_v3/simgen_OBCL-1_20241116_1713-merged.zip'
+#- '/scratch/hb-gida/data_v3/simgen_RuralNetwork_20241102_1927-13681717.zip'
+# - '/scratch/hb-gida/data_v3/simgen_WA1_20241030_1443-13622940.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ZJ_20241028_1906-merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky3_20241121_1512.zip'
 - '/scratch/hb-gida/data_v3/simgen_ky8_20241120_230_20241104_175.zip'
-- '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
+# #- '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
 
 node_attrs:
 - pressure
@@ -44,8 +44,8 @@ edge_attrs: []
 label_attrs: []
 edge_label_attrs: []
 input_paths: []
-num_records: 31000 #this number will be divided into 60%train-20%val-20%test
-chunk_limit: 5
+num_records: 6000 #this number will be divided into 60%train-20%val-20%test
+chunk_limit: 120
 selected_snapshots: null
 verbose: false
 split_type: scene
@@ -53,7 +53,7 @@ split_set: all
 skip_nodes_list: []
 skip_types_list: []
 unstackable_pad_value: 0.0
-bypass_skip_names_in_config: true
+bypass_skip_names_in_config: false
 do_lazy: false
 overwatch: false
 batch_axis_choice: snapshot

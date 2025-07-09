@@ -468,8 +468,11 @@ class GraphAttention(torch.nn.Module):
 
 
 class GraphAttentionWrapper(torch.nn.Module):
+    '''
+    This class provides a clean interface for the GraphAttention class hiding all irreps functionality.
+    '''
     def __init__( self,
-        in_channels: Union[int, Tuple[int, int]],
+        in_channels: int,
         out_channels: int,
         heads: int = 1,
         concat: bool = True,
@@ -560,7 +563,7 @@ class EdgeDegreeEmbeddingNetwork(torch.nn.Module):
         self.rad = RadialProfile(fc_neurons + [self.dw.tp.weight_numel])
         for (slice, slice_sqrt_k) in self.dw.slices_sqrt_k.values():
             self.rad.net[-1].weight.data[slice, :] *= slice_sqrt_k
-            self.rad.offset.data[slice] *= slice_sqrt_k
+            self.rad.offset.data[slice] *= slice_sqrt_k #type: ignore
         self.proj = LinearRS(self.dw.irreps_out.simplify(), irreps_node_embedding)
         self.scale_scatter = DegreeNormalizedScatter()
         
@@ -574,161 +577,3 @@ class EdgeDegreeEmbeddingNetwork(torch.nn.Module):
         node_features = self.scale_scatter(edge_features, edge_dst, dim=0, 
             dim_size=node_features.shape[0])
         return node_features
-
-
-# class ConcatIrrepsTensor(torch.nn.Module):
-    
-#     def __init__(self, irreps_1, irreps_2):
-#         super().__init__()
-#         assert irreps_1 == irreps_1.simplify()
-#         self.check_sorted(irreps_1)
-#         assert irreps_2 == irreps_2.simplify()
-#         self.check_sorted(irreps_2)
-        
-#         self.irreps_1 = irreps_1
-#         self.irreps_2 = irreps_2
-#         self.irreps_out = irreps_1 + irreps_2
-#         self.irreps_out, _, _ = sort_irreps_even_first(self.irreps_out) #self.irreps_out.sort()
-#         self.irreps_out = self.irreps_out.simplify()
-        
-#         self.ir_mul_list = []
-#         lmax = max(irreps_1.lmax, irreps_2.lmax)
-#         irreps_max = []
-#         for i in range(lmax + 1):
-#             irreps_max.append((1, (i, -1)))
-#             irreps_max.append((1, (i,  1)))
-#         irreps_max = o3.Irreps(irreps_max)
-        
-#         start_idx_1, start_idx_2 = 0, 0
-#         dim_1_list, dim_2_list = self.get_irreps_dim(irreps_1), self.get_irreps_dim(irreps_2)
-#         for _, ir in irreps_max:
-#             dim_1, dim_2 = None, None
-#             index_1 = self.get_ir_index(ir, irreps_1)
-#             index_2 = self.get_ir_index(ir, irreps_2)
-#             if index_1 != -1:
-#                 dim_1 = dim_1_list[index_1]
-#             if index_2 != -1:
-#                 dim_2 = dim_2_list[index_2]
-#             self.ir_mul_list.append((start_idx_1, dim_1, start_idx_2, dim_2))
-#             start_idx_1 = start_idx_1 + dim_1 if dim_1 is not None else start_idx_1
-#             start_idx_2 = start_idx_2 + dim_2 if dim_2 is not None else start_idx_2
-          
-            
-#     def get_irreps_dim(self, irreps):
-#         muls = []
-#         for mul, ir in irreps:
-#             muls.append(mul * ir.dim)
-#         return muls
-    
-    
-#     def check_sorted(self, irreps):
-#         lmax = None
-#         p = None
-#         for _, ir in irreps:
-#             if p is None and lmax is None:
-#                 p = ir.p
-#                 lmax = ir.l
-#                 continue
-#             if ir.l == lmax:
-#                 assert p < ir.p, 'Parity order error: {}'.format(irreps)
-#             assert lmax <= ir.l                
-        
-    
-#     def get_ir_index(self, ir, irreps):
-#         for index, (_, irrep) in enumerate(irreps):
-#             if irrep == ir:
-#                 return index
-#         return -1
-    
-    
-#     def forward(self, feature_1, feature_2):
-        
-#         output = []
-#         for i in range(len(self.ir_mul_list)):
-#             start_idx_1, mul_1, start_idx_2, mul_2 = self.ir_mul_list[i]
-#             if mul_1 is not None:
-#                 output.append(feature_1.narrow(-1, start_idx_1, mul_1))
-#             if mul_2 is not None:
-#                 output.append(feature_2.narrow(-1, start_idx_2, mul_2))
-#         output = torch.cat(output, dim=-1)
-#         return output
-    
-    
-#     def __repr__(self):
-#         return '{}(irreps_1={}, irreps_2={})'.format(self.__class__.__name__, 
-#             self.irreps_1, self.irreps_2)
-
-# @compile_mode('script')
-# class FeedForwardNetwork(torch.nn.Module):
-#     '''
-#         Use two (FCTP + Gate)
-#     '''
-#     def __init__(self,
-#         irreps_node_input, irreps_node_attr,
-#         irreps_node_output, irreps_mlp_mid=None,
-#         proj_drop=0.1):
-        
-#         super().__init__()
-#         self.irreps_node_input = o3.Irreps(irreps_node_input)
-#         self.irreps_node_attr = o3.Irreps(irreps_node_attr)
-#         self.irreps_mlp_mid = o3.Irreps(irreps_mlp_mid) if irreps_mlp_mid is not None \
-#             else self.irreps_node_input
-#         self.irreps_node_output = o3.Irreps(irreps_node_output)
-        
-#         self.fctp_1 = FullyConnectedTensorProductRescaleSwishGate(
-#             self.irreps_node_input, self.irreps_node_attr, self.irreps_mlp_mid, 
-#             bias=True, rescale=_RESCALE)
-#         self.fctp_2 = FullyConnectedTensorProductRescale(
-#             self.irreps_mlp_mid, self.irreps_node_attr, self.irreps_node_output, 
-#             bias=True, rescale=_RESCALE)
-        
-#         self.proj_drop = None
-#         if proj_drop != 0.0:
-#             self.proj_drop = EquivariantDropout(self.irreps_node_output, 
-#                 drop_prob=proj_drop)
-            
-        
-#     def forward(self, node_input, node_attr, **kwargs):
-#         node_output = self.fctp_1(node_input, node_attr)
-#         node_output = self.fctp_2(node_output, node_attr)
-#         if self.proj_drop is not None:
-#             node_output = self.proj_drop(node_output)
-#         return node_output   
-
-# class NodeEmbeddingNetwork(torch.nn.Module):
-    
-#     def __init__(self, irreps_node_embedding, max_atom_type=_MAX_ATOM_TYPE, bias=True):
-        
-#         super().__init__()
-#         self.max_atom_type = max_atom_type
-#         self.irreps_node_embedding = o3.Irreps(irreps_node_embedding)
-#         self.atom_type_lin = LinearRS(o3.Irreps('{}x0e'.format(self.max_atom_type)), 
-#             self.irreps_node_embedding, bias=bias)
-#         self.atom_type_lin.tp.weight.data.mul_(self.max_atom_type ** 0.5)
-        
-        
-#     def forward(self, node_atom):
-#         '''
-#             `node_atom` is a LongTensor.
-#         '''
-#         node_atom_onehot = torch.nn.functional.one_hot(node_atom, self.max_atom_type).float()
-#         node_attr = node_atom_onehot
-#         node_embedding = self.atom_type_lin(node_atom_onehot)
-        
-#         return node_embedding, node_attr, node_atom_onehot
-
-
-# class ScaledScatter(torch.nn.Module):
-#     def __init__(self, avg_aggregate_num):
-#         super().__init__()
-#         self.avg_aggregate_num = avg_aggregate_num + 0.0
-
-
-#     def forward(self, x, index, **kwargs):
-#         out = scatter(x, index, **kwargs)
-#         out = out.div(self.avg_aggregate_num ** 0.5)
-#         return out
-    
-    
-#     def extra_repr(self):
-#         return 'avg_aggregate_num={}'.format(self.avg_aggregate_num)

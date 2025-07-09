@@ -24,13 +24,13 @@ class GIN(nn.Module):
         if bn:
             self.batch_norms = nn.ModuleList()
         for _ in range(n_layers - 1):
-            layer = GINLayer(MLP(in_dims, hidden_dims)) # values taken from config file
+            layer = GINLayer(MLP(in_dims=in_dims, out_dims=hidden_dims, hidden_dims=32, n_layers=2)) # values taken from config file
             self.layers.append(layer)
             in_dims = hidden_dims
             if bn:
                 self.batch_norms.append(nn.BatchNorm1d(hidden_dims))
 
-        layer = GINLayer(MLP(hidden_dims, out_dims))
+        layer = GINLayer(MLP(hidden_dims, out_dims, 32))
         self.layers.append(layer)
 
     def forward(self, X: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
@@ -83,10 +83,10 @@ class GINLayer(MessagePassing):
         del S
         return self.mlp(Z)       # [N_sum, ***, D_out]
 
-    def message(self, X_j: torch.Tensor) -> torch.Tensor:
+    def message(self, X_j: torch.Tensor) -> torch.Tensor: #type: ignore
         """
-        :param X_j: Features of the edge sources. [E_sum, ***, D_in]
-        :return: The messages X_j for each edge (j -> i). [E_sum, ***, D_in]
+        :param x_j: Features of the edge sources. [E_sum, ***, D_in]
+        :return: The messages x_j for each edge (j -> i). [E_sum, ***, D_in]
         """
         return X_j   # [E_sum, ***, D_in]
 
@@ -102,7 +102,7 @@ class GINRho(nn.Module):
     ) -> None:
         super().__init__()
         self.gin = GIN(n_layers, in_dims, hidden_dims, out_dims, bn)
-        self.mlp = MLP(out_dims, out_dims)
+        #self.mlp = MLP(out_dims, out_dims)
 
     def forward(self, W_list: List[torch.Tensor], edge_index: torch.Tensor) -> torch.Tensor:
         """

@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --time=04:00:00
+#SBATCH --time=28:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --job-name=train-wdn-pe-baseline-inductive
+#SBATCH --job-name=train-wdn-pe-spe-inductive
 #SBATCH --mem=32000
 #SBATCH --gpus-per-node=a100:1
 
@@ -17,8 +17,8 @@ tar -czf $TMPDIR/code.tar.gz ./*
 cd $TMPDIR
 tar -xzf code.tar.gz
 
-python main.py --task train --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/gida_dataset_log.pt" --train_per_network
+python main.py --task train --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_spe_inductive.yaml" \
+    --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/" --train_per_network
 
 tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
 cd $HOME/2025-BSC-s5202841-Daniel-Seidel

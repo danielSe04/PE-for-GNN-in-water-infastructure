@@ -6,26 +6,28 @@ model_configs:
     name: gatres
     act: relu # unfunctional
     has_final_linear: false # unfunctional
+
+pe_config: 
+    !!python/object:gigantic_dataset.utils.configs.PEConfig
+    pe_technique: concat
+    pe_init: "geo"
+    pe_dim: 20
+    pe_task: supervised
+    aux_criterion: morans-i
+    aux_loss_alpha: 0.5
+
 lr: 0.0005
 weight_decay: 0.00001
-epochs: 10
+epochs: 1000
 mask_rate: 0.95
 criterion: mse
-batch_size: 2048  # this can be 120 in habrok
-use_data_batch: false
+batch_size: 1024  # this can be 120 in habrok
+use_data_batch: true
 device: cuda
 norm_type:  znorm
 task: semi
-positional_encoding: pe-gnn
-pe_init: "geo"
-pe_dim: 20
-pe_task: supervised
-pe_criterion: morans-i
-pe_loss_alpha: 0.5
-subgraphing: false
-k: 5
 log_method: "wandb"
 project_name: gida_model_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'pe-gnn_deductive'  # to distinguish two wandb runs
+run_prefix: 'pe-gnn_transductive'  # to distinguish two wandb runs

@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=45:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=train-wdn-equiformer-transductive
-#SBATCH --mem=128000
+#SBATCH --mem=8000
 #SBATCH --gpus-per-node=a100:1
 
 module purge

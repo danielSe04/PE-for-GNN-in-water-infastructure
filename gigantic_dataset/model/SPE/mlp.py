@@ -1,5 +1,4 @@
 # This file is copied from the original SPE implementation: https://github.com/Graph-COM/SPE
-# Contr: Added ln switch in MLPLayer
 
 from typing import Optional
 
@@ -33,7 +32,7 @@ class MLP(nn.Module):
         :param X: Input feature matrix. [***, D_in]
         :return: Output feature matrix. [***, D_out]
         """
-        for layer in self.layers:
+        for _, layer in enumerate(self.layers):
             X = layer(X)      # [***, D_hid]
         X = self.fc(X)        # [***, D_out]
         X = self.dropout(X)   # [***, D_out]
