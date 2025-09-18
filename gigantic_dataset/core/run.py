@@ -67,13 +67,13 @@ def extract_dataset_name(gida_config: GidaConfig) -> str:
         dataset_name = f"{num_networks}wdns"
     return dataset_name
 
-def add_pe_to_func_ref(func_ref, train_config: TrainConfig):
+def add_pe_to_func_ref(func_ref: FuncRef, train_config: TrainConfig, gida_config: GidaConfig):
     '''
     Helper function that modifies the func_ref object based on the configuration of the positional encoding.
     '''
     pe_technique = train_config.pe_config.pe_technique
     if pe_technique == "":
-        return func_ref
+        return func_ref, gida_config
     if pe_technique == "equiformer":
         func_ref.load_models = partial(LoadModel(), model_class=EquiformerMeanConv)
         func_ref.forward_fn = partial(SemiSingleForward(), pass_coordinates=True)
@@ -85,7 +85,14 @@ def add_pe_to_func_ref(func_ref, train_config: TrainConfig):
         else:
             raise NotImplementedError()
         func_ref.forward_fn = SemiSingleForwardPE(pe_supervised=(train_config.pe_config.pe_task == "supervised"))
-    return func_ref
+    
+    pe_init = train_config.pe_config.pe_init
+    if pe_init == "rw" or pe_init == "pe-gnn-rw":
+        gida_config.rw_dim = train_config.pe_config.pe_dim
+    elif pe_init == "spe":
+        gida_config.eig_amt = 8
+    
+    return func_ref, gida_config
         
 def pressure_estimation(
     gida_yaml_path: str,
@@ -145,7 +152,7 @@ def pressure_estimation(
     )
 
     # Modify function references based on the positional encoding specified, if pe is used
-    func_ref = add_pe_to_func_ref(func_ref, train_config)
+    func_ref, gida_config = add_pe_to_func_ref(func_ref, train_config, gida_config)
 
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)
@@ -270,7 +277,7 @@ def pressure_estimation_inference(
     )
 
     # Modify function references based on the positional encoding specified, if pe is used
-    func_ref = add_pe_to_func_ref(func_ref, train_config)
+    func_ref, gida_config = add_pe_to_func_ref(func_ref, train_config, gida_config)
     
     # initialize the ConfigRef which we can call from anywhere
     ConfigRef.initialize_and_start_profiler(config=train_config, ref=func_ref)

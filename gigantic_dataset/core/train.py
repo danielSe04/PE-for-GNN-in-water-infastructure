@@ -169,6 +169,7 @@ class TrainOneEpoch(TrainOneEpochProto):
             pt.to(device)
         len_loader_dataset = len(loader.dataset)  # type:ignore
         total_loss = total_loss_aux = 0.0
+        aux_criterion = ConfigRef.config.pe_config.aux_criterion
         total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
         out = pe_out = None
 
@@ -187,6 +188,9 @@ class TrainOneEpoch(TrainOneEpochProto):
             data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
             data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
             data.coordinates = data.coordinates.to(device, non_blocking=non_blocking) if "coordinates" in data else None
+            data.rw_pe = data.rw_pe.to(device, non_blocking=non_blocking) if "rw_pe" in data else None
+            data.eigenvalues = data.eigenvalues.to(device, non_blocking=non_blocking) if "eigenvalues" in data else None
+            data.eigenvectors = data.eigenvectors.to(device, non_blocking=non_blocking) if "eigenvectors" in data else None
 
             y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
             
@@ -194,11 +198,11 @@ class TrainOneEpoch(TrainOneEpochProto):
             tr_loss = criterion(y_pred, y_true)
             loss = tr_loss
             pe_out = None
-            if not ConfigRef.config.pe_config.aux_criterion == "": # if there is an auxiliary learning task, calculate its loss
+            if not aux_criterion == "": # if there is an auxiliary learning task, calculate its loss
                 pe_true = pe_pred = pe_out = None
                 if len(pe) == 3:
                     pe_true, pe_pred, pe_out = pe
-                if ConfigRef.config.pe_config.aux_criterion == "morans-i":
+                if aux_criterion == "morans-i":
                     aux_true = lw_tensor_local_moran(y=data.y, edge_index=data.edge_index, batch=data.batch).to(device)
                     aux_true = aux_true[:, 0] # take only the pressure estimation, as in the regular criterion
                     aux_pred = data.y[:, 0] # type: ignore
@@ -206,7 +210,7 @@ class TrainOneEpoch(TrainOneEpochProto):
                     assert pe_true is not None and pe_pred is not None, "Calculating auxiliary loss based on positional encoding, but PE is None"
                     aux_true = pe_true
                     aux_pred = pe_pred
-                aux_loss = calculate_auxiliary_loss(aux_true, aux_pred, edge_index=data.edge_index, batch=data.batch)
+                aux_loss = calculate_auxiliary_loss(aux_criterion, aux_true, aux_pred, edge_index=data.edge_index, batch=data.batch)
                 total_loss_aux += aux_loss
                 loss = tr_loss + config.pe_config.aux_loss_alpha*aux_loss
 
@@ -251,6 +255,7 @@ class TestOneEpoch(TestOneEpochProto):
         with torch.no_grad():
             total_loss = 0
             total_loss_aux = 0
+            aux_criterion = ConfigRef.config.pe_config.aux_criterion
             total_metric_dict = {k: 0 for k in metric_fn_dict.keys()}
             len_loader_dataset = len(loader.dataset)  # type:ignore
             for i, data in enumerate(loader):
@@ -270,14 +275,17 @@ class TestOneEpoch(TestOneEpochProto):
                 data.batch = data.batch.to(device, non_blocking=non_blocking) if use_data_batch else None
                 data.edge_index = data.edge_index.to(device, non_blocking=non_blocking)
                 data.coordinates = data.coordinates.to(device, non_blocking=non_blocking) if "coordinates" in data else None
+                data.rw_pe = data.rw_pe.to(device, non_blocking=non_blocking) if "rw_pe" in data else None
+                data.eigenvalues = data.eigenvalues.to(device, non_blocking=non_blocking) if "eigenvalues" in data else None
+                data.eigenvectors = data.eigenvectors.to(device, non_blocking=non_blocking) if "eigenvectors" in data else None
 
                 y_true, y_pred, out, *pe = func_ref.forward_fn(models=models, data=data, batch_mask=batch_mask, **kwargs)
                 val_loss = criterion(y_pred, y_true)
                 pe_true = pe_pred = pe_out = None
                 if len(pe) == 3:
                     pe_true, pe_pred, pe_out = pe
-                if not ConfigRef.config.pe_config.aux_criterion == "":
-                    if ConfigRef.config.pe_config.aux_criterion == "morans-i":
+                if not aux_criterion == "":
+                    if aux_criterion == "morans-i":
                         aux_true = lw_tensor_local_moran(y=data.y, edge_index=data.edge_index, batch=data.batch).to(device)
                         aux_true = aux_true[:, 0] # take only the pressure estimation, as in the regular criterion
                         aux_pred = data.y[:, 0] # type: ignore
@@ -285,7 +293,7 @@ class TestOneEpoch(TestOneEpochProto):
                         assert pe_true is not None and pe_pred is not None, "Calculating auxiliary loss based on positional encoding, but PE is None"
                         aux_true = pe_true
                         aux_pred = pe_pred
-                    aux_loss = calculate_auxiliary_loss(aux_true, aux_pred, edge_index=data.edge_index, batch=data.batch)
+                    aux_loss = calculate_auxiliary_loss(aux_criterion, aux_true, aux_pred, edge_index=data.edge_index, batch=data.batch)
                     total_loss_aux += aux_loss
 
                 # update metrics
@@ -469,10 +477,11 @@ def eval(
     test_dataset = datasets[-1]
 
     # Create data loaders for every topology individually
-    topology_loaders = get_data_loader_per_network(test_dataset, config.batch_size)[0]
-    
-    zip_file_paths = test_dataset.zip_file_paths # type: ignore
-    topology_names = [get_dataset_name_from_zip_file_path(z) for z in zip_file_paths]
+    topology_loaders = topology_names = []
+    if test_dataset.get_number_of_networks() > 1 or match_models_to_networks: #type: ignore
+        topology_loaders = get_data_loader_per_network(test_dataset, config.batch_size)[0]
+        zip_file_paths = test_dataset.zip_file_paths # type: ignore
+        topology_names = [get_dataset_name_from_zip_file_path(z) for z in zip_file_paths]
 
     # load reference
     criterion = func_ref.load_criterion(**kwargs)

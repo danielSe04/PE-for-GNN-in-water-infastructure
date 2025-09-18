@@ -325,9 +325,11 @@ def pre_proccessing(
     """  # noqa: E501
     actual_num_records: int = gida_config.num_records if gida_config.num_records is not None else full_gida.length
     # compute #samples per set
-    train_samples = int(actual_num_records * full_gida.split_ratios[0])
-    val_samples = int(actual_num_records * full_gida.split_ratios[1])
-    test_samples = actual_num_records - train_samples - val_samples
+    train_samples = val_samples = test_samples = 1
+    if not actual_num_records / full_gida.get_number_of_networks() == 3:
+        train_samples = int(actual_num_records * full_gida.split_ratios[0])
+        val_samples = int(actual_num_records * full_gida.split_ratios[1])
+        test_samples = actual_num_records - train_samples - val_samples
 
     train_set = full_gida.get_set(full_gida.train_ids, num_records=train_samples)
     assert train_set is not None and isinstance(train_set, GidaV6)

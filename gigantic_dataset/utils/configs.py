@@ -413,6 +413,9 @@ class GidaConfig(AbstractConfig):
     bypass_skip_names_in_config: bool = False  # if True, we bypass even skip_nodes in config.
     do_lazy: bool = False  # if True, gida delays the dataset reading. Useful when we yield a generator to read chunks.
     subset_shuffle: bool = True  # given train/val/test ids, flag indicates whether shuffle this list once before taking the corresponding subset. For temporal split_type, it should be False.  # noqa: E501
+    """########################### PE FEATURES "###########################"""
+    rw_dim: int = 0 # Dimension of the random walk matrix stored for each graph. If it is 0, then nothing is stored.
+    eig_amt: int = 0 # The amount of eigenvalues and eigenvectors stored for each graph. If it is 0, then nothing is stored.
     """########################### NEW FEATURES "###########################"""
     dataset_log_pt_path: str = ""  # if non empty, we load/save subset_shuffle and statistic into this pt file.
     batch_axis_choice: Literal["temporal", "scene", "snapshot"] = "scene"  # which axis is set as batch dimension.
@@ -455,7 +458,7 @@ class ModelConfig(AbstractConfig):
 class PEConfig(AbstractConfig):
     # By default, the PE is turned off
     pe_technique: Literal["", "lspe", "concat", "equiformer"] = "" # They type of model used / how the PE is added to the model.
-    pe_init: Literal["", "rw", "geo", "spe"] = "" # The initialization method. These will be initialized if set, but matching pe_technique must be used to actually utilize it in the model.
+    pe_init: Literal["", "rw", "geo", "pe-gnn-rw", "spe"] = "" # The initialization method. These will be initialized if set, but matching pe_technique must be used to actually utilize it in the model.
     pe_dim: int = 0
     pe_task: Literal["", "supervised", "semi"] = "" # How the PE is added to the model
     aux_criterion: Literal["", "mse", "laplacian", "morans-i"] = "" # The criterion used in the auxiliary learning task

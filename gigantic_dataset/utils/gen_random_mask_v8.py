@@ -32,7 +32,7 @@ def generate_batch_mask(
     cumsum_num_nodes = torch.cumsum(num_nodes, dim=0)  # type:ignore
     lbs = torch.nn.functional.pad(cumsum_num_nodes[:-1], [1, 0])  # torch.cat([torch.zeros(size=[1]),cumsum_num_nodes[:-1]])
     ubs = cumsum_num_nodes
-    remaining_nodes = torch.arange(N)
+    remaining_nodes = torch.arange(N, device=cumsum_num_nodes.device)
 
     if required_mask is not None:
         nonzero_inverted_required_mask = (~required_mask).nonzero()

@@ -1,15 +1,17 @@
+from typing import Any
 import sklearn
 import os
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+import numpy as np
 import torch
 from torch import Tensor
 import torch.nn.functional as F
-from torch_geometric.utils import get_laplacian, subgraph
+from torch_geometric.utils import get_laplacian, subgraph, degree
 from torch_scatter import scatter_mean, scatter_std, scatter_min, scatter_max, scatter_add
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import eigsh
 import wandb
-from gigantic_dataset.utils.train_protos import ConfigRef
-
 
 def plot_pe_wandb(pe: Tensor | list[Tensor], edge_index: Tensor, plot_name: str, plot_edges: bool = True, save_wandb: bool = True) -> None:
     '''
@@ -86,6 +88,40 @@ def sparse_diagonal(G: Tensor) -> Tensor:
         diag_values[dest_nodes[mask]] = values[mask]
         return diag_values
 
+def calculate_rwpe(edge_index: torch.Tensor | np.ndarray, num_nodes: int, pe_dim: int) -> torch.Tensor:
+        '''
+        Calculates the random walk positional encoding for a single graph. 
+        '''
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if pe_dim < 1:
+            return torch.empty(num_nodes, 0, dtype=torch.float, device=device)
+        if isinstance(edge_index, np.ndarray):
+            edge_index = torch.as_tensor(edge_index, dtype=torch.long, device=device)
+        source_nodes = edge_index[1]
+        node_degrees = degree(source_nodes, num_nodes=num_nodes, dtype=torch.float)
+        # Calculate and invert the degrees
+        degrees_inv = 1.0 / node_degrees
+        degrees_inv[node_degrees==0] = 0.0
+        edge_weights = degrees_inv[source_nodes]
+        
+        # Calculate RWPE by calculating powers of the random walk matrix, and storing the diagonals of the powers
+        rw_base = torch.sparse_coo_tensor(edge_index, edge_weights, (num_nodes, num_nodes))
+        rw_power = rw_base.clone()
+        pe = [sparse_diagonal(rw_base)]
+        for _ in range(pe_dim-1):
+            rw_power = torch.sparse.mm(rw_power, rw_base)
+            pe.append(sparse_diagonal(rw_power))
+        # rearrange the dimensions to have the pe of a node in a row, not in a column
+        return torch.stack(pe, dim=-1) # Shape: (node_amt, pe_dim)
+
+def calculate_eigs(edge_index: Tensor | np.ndarray, eig_amt: int, num_nodes: int) -> tuple[Any, Any]:
+    if isinstance(edge_index, np.ndarray):
+        edge_index = torch.as_tensor(edge_index, dtype=torch.long)
+    lap_edge_index, lap_edge_weight = get_laplacian(edge_index=edge_index, normalization="sym") # Get the normalized laplacian
+    laplacian = coo_matrix((lap_edge_weight.cpu(), (lap_edge_index[0].cpu().numpy(), lap_edge_index[1].cpu().numpy())), shape=(num_nodes, num_nodes))
+    k = min(num_nodes, eig_amt)
+    return eigsh(laplacian, k=k, which="SM")  # type: ignore
+
 def laplacian_eigenvector_loss(pe: Tensor, laplacian: Tensor, lambda_ortho: float = 0.1) -> float:
     '''
     Computes the laplacian eigenvector loss, which is defined as Trace(Y^T L Y) where Y is the model output 
@@ -107,7 +143,7 @@ def laplacian_eigenvector_loss(pe: Tensor, laplacian: Tensor, lambda_ortho: floa
     loss = trace + lambda_ortho * ortho
     return loss.item()
 
-def calculate_auxiliary_loss(aux_true: Tensor, aux_pred: Tensor, edge_index: Tensor | None = None, batch: Tensor | None = None) -> float:
+def calculate_auxiliary_loss(loss_criterion: str, aux_true: Tensor, aux_pred: Tensor, edge_index: Tensor | None = None, batch: Tensor | None = None) -> float:
     '''
     This function computes the auxiliary loss based on the pe configuration, the true values, and output values.
 
@@ -118,13 +154,12 @@ def calculate_auxiliary_loss(aux_true: Tensor, aux_pred: Tensor, edge_index: Ten
         batch (Tensor): The graph batch.
     Returns:
         float: The auxiliary loss.
-
-
     '''
-    loss_criterion = ConfigRef.config.pe_config.aux_criterion
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if loss_criterion == "mse" or loss_criterion == "morans-i":
         assert aux_true.shape == aux_pred.shape, f"Cannot compute MSE: Shape of target is {aux_true.shape}, but shape of output is {aux_pred.shape}"
-        return torch.nn.MSELoss(reduction="mean").to(ConfigRef.config.device)(aux_pred, aux_true)
+        return torch.nn.MSELoss(reduction="mean").to(device)(aux_pred, aux_true)
     elif loss_criterion == "laplacian":
         assert edge_index is not None, f"Edge indices are required for calculation of {loss_criterion} loss, but edge_index is None."
         assert batch is not None, f"Batch is required for calculation of {loss_criterion} loss, but batch is None."
@@ -166,9 +201,9 @@ def lw_tensor_local_moran(y, edge_index, batch=None, na_to_zero=True, norm=True,
     '''
     This function calculates the Moran's I metric for the output variable(s) adhering to the graph batching.
     Moran's I is defined as I_i = (n-1) frac{y_i - bar y}{sum_{j=1}^n (y_j - bar y)^2} sum_{j=1, j neq i}^n a_{i,j} (y_j - bar y)
-    where i is a node, bar y is the average of y, and n is the total number of nodes.
+    where i is a node, and bar y is the average of y.
     '''
-    device = ConfigRef.config.device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if batch == None:
         batch = torch.zeros(len(y)).to(device).long()
     n_1_per_graph = torch.bincount(batch) - 1
@@ -185,5 +220,5 @@ def lw_tensor_local_moran(y, edge_index, batch=None, na_to_zero=True, norm=True,
         mi = torch.nan_to_num(mi, nan=0.0)
     if norm==True:
         mi = normal_torch(mi, batch, min_val=norm_min_val)
-    return torch.tensor(mi) # This is intentional apparently. It detaches the Moran's I from torch's computation tree,
+    return mi # TODO: This is intentional apparently. It detaches the Moran's I from torch's computation tree,
                             # however without this yields worse results. It seems that being detached, Moran's I doesn't really do anything for the performance.

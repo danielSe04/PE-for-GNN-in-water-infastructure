@@ -181,7 +181,7 @@ class MultiLayerFeedForwardNN(nn.Module):
         Raises:
             Exception: If given activation or normalizer not supported.
         '''
-        assert input_tensor.size()[-1] == self.input_dim
+        assert input_tensor.size()[-1] == self.input_dim, f"input size: {input_tensor.size()[-1]}, input is supposed to be {self.input_dim}"
         output = input_tensor
         for i in range(len(self.layers)):
             output = self.layers[i](output)
@@ -227,7 +227,7 @@ class GridCellSpatialRelationEncoder(nn.Module):
         self.input_embed_dim = self.cal_input_dim()
 
         if self.ffn is not None:
-          self.ffn = MultiLayerFeedForwardNN(2 * frequency_num * 2, spa_embed_dim)
+          self.ffn = MultiLayerFeedForwardNN(self.input_embed_dim, spa_embed_dim)
           self.ffn.to(self.device)
 
     def cal_elementwise_angle(self, coord, cur_freq):
