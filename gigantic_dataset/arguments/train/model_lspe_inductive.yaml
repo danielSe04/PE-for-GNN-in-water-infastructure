@@ -21,13 +21,13 @@ weight_decay: 0.00001
 epochs: 200
 mask_rate: 0.95
 criterion: mse
-batch_size: 1024  # this can be 120 in habrok
+batch_size: 256  # this can be 120 in habrok
 use_data_batch: true
 device: cuda
 norm_type:  znorm
 task: semi
 log_method: "wandb"
-project_name: gida_model_train #it is not auto-change when you eval(.)
+project_name: gida_model_improved_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe_inductive'  # to distinguish two wandb runs
+run_prefix: 'lspe_inductive-new'  # to distinguish two wandb runs

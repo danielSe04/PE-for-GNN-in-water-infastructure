@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=train-wdn-pe-zero-shot
@@ -18,24 +18,37 @@ cd $TMPDIR
 tar -xzf code.tar.gz
 
 export CUDA_LAUNCH_BLOCKING=1
-python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/gida_dataset_log.pt"
 
-python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_pe-gnn_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/pe-gnn_deductive+6wdns+gatres+20250622_0624/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/pe-gnn_deductive+6wdns+gatres+20250622_0624/gida_dataset_log.pt"
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_transductive.yaml" --model_config "gigantic_dataset/arguments/train/model_transductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/gida_dataset_log.pt"
 
-python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_lspe_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/lspe-transductive+6wdns+gatres+20250622_0548/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/lspe-transductive+6wdns+gatres+20250622_0548/gida_dataset_log.pt"
-
-python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_equiformer_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/equiformer_transductive+6wdns+gatres+20250618_1013/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/equiformer_transductive+6wdns+gatres+20250618_1013/gida_dataset_log.pt"
-
-python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_spe_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/gida_dataset_log.pt"
+python main.py --task train --data_config "gigantic_dataset/arguments/train/data_inductive_test.yaml" --model_config "gigantic_dataset/arguments/train/model_inductive.yaml" \
+    --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/gida_dataset_log.pt"
 
 
-tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
-cd $HOME/2025-BSC-s5202841-Daniel-Seidel
+# Unnormalized
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_pe-gnn_inductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/pe-gnn_transductive+6wdns+gatres+20250731_1646/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/pe-gnn_transductive+6wdns+gatres+20250731_1646/gida_dataset_log.pt"
 
-tar -xzf gigantic_dataset/experiments_logs/logs.tar.gz
-rm gigantic_dataset/experiments_logs/logs.tar.gz
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive_test.yaml" --model_config "gigantic_dataset/arguments/train/model_pe-gnn_inductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/pe-gnn_transductive+6wdns+gatres+20250801_1307/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/pe-gnn_transductive+6wdns+gatres+20250801_1307/gida_dataset_log.pt"
+
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive_test.yaml" --model_config "gigantic_dataset/arguments/train/model_lspe_inductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/lspe-transductive+6wdns+gatres+20250809_1707/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/lspe-transductive+6wdns+gatres+20250809_1707/gida_dataset_log.pt"
+
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive_test.yaml" --model_config "gigantic_dataset/arguments/train/model_equiformer_inductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/equiformer_transductive+6wdns+gatres+20250821_0904/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/equiformer_transductive+6wdns+gatres+20250821_0904/gida_dataset_log.pt"
+
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_inductive_test.yaml" --model_config "gigantic_dataset/arguments/train/model_spe_inductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250827_1630/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250827_1630/gida_dataset_log.pt"
+
+# SPE with higher learning rate
+# python main.py --task inference --data_config "gigantic_dataset/arguments/train/data_transductive.yaml" --model_config "gigantic_dataset/arguments/train/model_spe_transductive.yaml" \
+#     --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250807_1511/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250807_1511/gida_dataset_log.pt"
+
+
+# tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
+# cd $HOME/2025-BSC-s5202841-Daniel-Seidel
+
+# tar -xzf gigantic_dataset/experiments_logs/logs.tar.gz
+# rm gigantic_dataset/experiments_logs/logs.tar.gz

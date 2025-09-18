@@ -1,7 +1,13 @@
 zip_file_paths:
-- '/scratch/hb-gida/data_v3/simgen_FOWM_20241022_1122.zip'
-- '/scratch/hb-gida/data_v3/simgen_balerma_20241028_1133-merged.zip'
-- '/scratch/hb-gida/data_v3/simgen_L-TOWN_Real_20241108_1942-13761971.zip'
+# - '/scratch/hb-gida/data_v3/simgen_FOWM_20241022_1122.zip'
+# - '/scratch/hb-gida/data_v3/simgen_balerma_20241028_1133-merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_L-TOWN_Real_20241108_1942-13761971.zip'
+
+- '/scratch/hb-gida/data_v3/simgen_ky5_20241104_1751.zip'
+- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
+- '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
 
 node_attrs:
 - pressure

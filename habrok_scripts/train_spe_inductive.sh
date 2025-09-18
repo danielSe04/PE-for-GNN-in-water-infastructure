@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=28:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=train-wdn-pe-spe-inductive
@@ -18,7 +18,7 @@ cd $TMPDIR
 tar -xzf code.tar.gz
 
 python main.py --task train --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_spe_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250622_2348/" --train_per_network
+    --load_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250827_1630/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/spe-transductive+6wdns+gatres+20250827_1630/" --train_per_network
 
 tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
 cd $HOME/2025-BSC-s5202841-Daniel-Seidel

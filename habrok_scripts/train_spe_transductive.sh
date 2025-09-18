@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=72:00:00
+#SBATCH --time=40:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --job-name=train-wdn-pe-spe-transductive

@@ -1,0 +1,39 @@
+zip_file_paths:
+# - '/scratch/hb-gida/data_v3/simgen_FOWM_20241022_1122.zip'
+# - '/scratch/hb-gida/data_v3/simgen_balerma_20241028_1133-merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_L-TOWN_Real_20241108_1942-13761971.zip'
+
+# - '/scratch/hb-gida/data_v3/simgen_ky5_20241104_1751.zip'
+- '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
+# - '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
+# - '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
+
+node_attrs:
+- pressure
+- demand
+-
+  - reservoir_base_head
+  - junction_elevation
+  - tank_elevation
+edge_attrs: []
+label_attrs: []
+edge_label_attrs: []
+input_paths: []
+num_records: 24000 #this number will be divided into 60%train-20%val-20%test - 1000 per network
+chunk_limit: 120
+selected_snapshots: null
+verbose: false
+split_type: scene
+split_set: all
+skip_nodes_list: []
+skip_types_list: []
+unstackable_pad_value: 0.0
+bypass_skip_names_in_config: false
+do_lazy: false
+overwatch: false
+batch_axis_choice: snapshot
+do_cache: false # set True if your RAM can handle the whole array.
+subset_shuffle: true
+split_per_network: true
+sampling_strategy: "random"

@@ -18,7 +18,7 @@ cd $TMPDIR
 tar -xzf code.tar.gz
 
 python main.py --task train --data_config "gigantic_dataset/arguments/train/data_inductive.yaml" --model_config "gigantic_dataset/arguments/train/model_inductive.yaml" \
-    --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250616_2205/gida_dataset_log.pt" --train_per_network
+    --load_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/" --custom_stats_tuple_pt_path "gigantic_dataset/experiments_logs/baseline_transductive+6wdns+gatres+20250724_1229/gida_dataset_log.pt" --train_per_network
 
 tar -czf $HOME/2025-BSC-s5202841-Daniel-Seidel/gigantic_dataset/experiments_logs/logs.tar.gz ./gigantic_dataset/experiments_logs/*
 cd $HOME/2025-BSC-s5202841-Daniel-Seidel
