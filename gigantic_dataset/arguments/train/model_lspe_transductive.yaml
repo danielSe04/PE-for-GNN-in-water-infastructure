@@ -13,7 +13,7 @@ pe_config:
     pe_init: "rw"
     pe_dim: 20
     pe_task: supervised
-    aux_criterion: ''
+    aux_criterion: 'laplacian'
     aux_loss_alpha: 0.5
 
 
@@ -27,8 +27,8 @@ use_data_batch: true
 device: cuda
 norm_type:  znorm
 task: semi
-log_method: "wandb"
+log_method: ""
 project_name: gida_model_improved_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe-transductive-no-aux'  # to distinguish two wandb runs
+run_prefix: 'lspe-transductive'  # to distinguish two wandb runs

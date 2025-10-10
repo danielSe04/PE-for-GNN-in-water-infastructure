@@ -214,11 +214,9 @@ def lw_tensor_local_moran(y, edge_index, batch=None, na_to_zero=True, norm=True,
     den = scatter_add(z * z, batch, dim=0)
     w_sparse = torch.sparse_coo_tensor(edge_index, torch.ones(edge_index.shape[1], device=device), size=(len(y), len(y)), device=device).coalesce()
     zl = torch.sparse.mm(w_sparse, z).to(device)
-    # zl / den[batch]
     mi = n_1_per_graph[batch].unsqueeze(1) * z * zl / den[batch]
     if na_to_zero==True:
         mi = torch.nan_to_num(mi, nan=0.0)
     if norm==True:
         mi = normal_torch(mi, batch, min_val=norm_min_val)
-    return mi # TODO: This is intentional apparently. It detaches the Moran's I from torch's computation tree,
-                            # however without this yields worse results. It seems that being detached, Moran's I doesn't really do anything for the performance.
+    return mi

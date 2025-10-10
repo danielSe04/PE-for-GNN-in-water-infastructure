@@ -30,4 +30,4 @@ log_method: "wandb"
 project_name: gida_model_improved_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'spe-inductive-new'  # to distinguish two wandb runs
+run_prefix: 'spe-inductive'  # to distinguish two wandb runs

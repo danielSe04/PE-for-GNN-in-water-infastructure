@@ -26,7 +26,7 @@ use_data_batch: true
 device: cuda
 norm_type:  znorm
 task: semi
-log_method: "wandb"
+log_method: ""
 project_name: gida_model_improved_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1

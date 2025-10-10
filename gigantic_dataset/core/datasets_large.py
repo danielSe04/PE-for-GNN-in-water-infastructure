@@ -124,8 +124,6 @@ def read_coordinates(file_path: str, skip_names: list[str]) -> np.ndarray:
     min_coord = np.min(coords, axis=0)
     max_coord = np.max(coords, axis=0)
     coords = (coords - min_coord) / (max_coord - min_coord)
-    print("Number of nodes: ", len(coords))
-
     return coords
 
 class GidaSubset(Subset):
@@ -447,7 +445,6 @@ class GidaV6(Dataset):
                             num_train = int(num_samples_per_network * self.split_ratios[0])
                             num_val = int(num_samples_per_network * self.split_ratios[1])
                             num_test = int(num_samples_per_network * self.split_ratios[2])
-                            print(num_train, num_val, num_test)
                             num_train_samples = num_val_samples = num_test_samples = 1
                             if not self.num_records / len(self._num_samples_per_network_list) == 3:
                                 num_train_samples = int(
@@ -904,7 +901,7 @@ class GidaV6(Dataset):
             root.rw_pe = calculate_rwpe(root.edge_index, num_nodes, self.rw_dim) if self.rw_dim > 0 else None
             root.eigs = calculate_eigs(root.edge_index, self.eig_amt, num_nodes) if self.eig_amt > 0 else None
 
-            # # printing the coordinates
+            # printing the coordinates
             # fig, ax = plt.subplots(1, 1, figsize=(8,6))
             # ax.scatter(root.coordinates[:, 0], root.coordinates[:, 1], s=10, color='darkblue')
             # ax.set_title(f"Node Coordinates and Edges for Network {coords_file_name}")
@@ -919,7 +916,7 @@ class GidaV6(Dataset):
             # lc = LineCollection(segments, linewidths=1.0, alpha=0.5, color='darkorange')
             # ax.add_collection(lc)
             # # Save the plots
-            # wandb.log({coords_file_name: wandb.Image(fig)})
+            # wandb.log({f"{coords_file_name}_raw": wandb.Image(fig)})
             # plt.close(fig)
 
         self._is_init_root = True

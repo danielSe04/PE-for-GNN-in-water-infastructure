@@ -91,6 +91,7 @@ class TestOneEpochProto(Protocol):
         loader: DataLoader,
         criterion: Callable[..., Any],
         metric_fn_dict: dict[str, Callable[..., Any]],
+        plot_pe: bool = False,
         **kwargs: Any,
     ) -> tuple[float, dict, Any, float]:
         raise NotImplementedError()

@@ -480,8 +480,8 @@ def eval(
     topology_loaders = topology_names = []
     if test_dataset.get_number_of_networks() > 1 or match_models_to_networks: #type: ignore
         topology_loaders = get_data_loader_per_network(test_dataset, config.batch_size)[0]
-        zip_file_paths = test_dataset.zip_file_paths # type: ignore
-        topology_names = [get_dataset_name_from_zip_file_path(z) for z in zip_file_paths]
+    zip_file_paths = test_dataset.zip_file_paths # type: ignore
+    topology_names = [get_dataset_name_from_zip_file_path(z) for z in zip_file_paths]
 
     # load reference
     criterion = func_ref.load_criterion(**kwargs)
@@ -496,13 +496,14 @@ def eval(
     if not match_models_to_networks:
         test_loader = wrapper_data_loader(test_dataset, sampling_strategy="batch", batch_size=config.batch_size, shuffle=False, pin_memory=False)
         assert isinstance(test_loader, DataLoader)
-
         test_loss, test_metric_dict, _, pe_loss = func_ref.test_one_epoch_fn(
             models=models_list[0],
             loader=test_loader,
             criterion=criterion,
             metric_fn_dict=test_metric_fn_dict,
             config=config,
+            plot_pe=plot_pe,
+            topology_name=topology_names[0] if plot_pe else "",
             **kwargs,
         )
 
@@ -522,18 +523,23 @@ def eval(
                 best_epoch=best_epoch,
                 test_metric_dict=test_metric_dict,
         )
+    end_time = time.time()
+    dt2 = datetime.fromtimestamp(end_time)
+    print("*" * 80)
+    print("First pass through time:", dt2)
+    print("Executation time: ", dt2 - dt1)
      
     for i, loader in enumerate(topology_loaders):
         models_used = models_list[0] if not match_models_to_networks else models_list[i]
         test_loss, test_metric_dict, _, pe_loss = func_ref.test_one_epoch_fn(
-        models=models_used,
-        loader=loader,
-        criterion=criterion,
-        metric_fn_dict=test_metric_fn_dict,
-        config=config,
-        plot_pe=plot_pe,
-        topology_name=topology_names[i],
-        **kwargs,
+            models=models_used,
+            loader=loader,
+            criterion=criterion,
+            metric_fn_dict=test_metric_fn_dict,
+            config=config,
+            plot_pe=plot_pe,
+            topology_name=topology_names[i],
+            **kwargs,
         )
 
         print_single_metrics(

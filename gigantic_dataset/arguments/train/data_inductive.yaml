@@ -6,7 +6,7 @@ zip_file_paths:
 - '/scratch/hb-gida/data_v3/simgen_ky5_20241104_1751.zip'
 - '/scratch/hb-gida/data_v3/simgen_EXN_20241119_0325.zip'
 # - '/scratch/hb-gida/data_v3/simgen_ky10_20241105_2232-13710476.zip'
-- '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
+#- '/scratch/hb-gida/data_v3/simgen_ky16_20241219_1023_merged.zip'
 # - '/scratch/hb-gida/data_v3/simgen_large_20241111_2257.zip'
 
 node_attrs:
@@ -20,7 +20,7 @@ edge_attrs: []
 label_attrs: []
 edge_label_attrs: []
 input_paths: []
-num_records: 3000 #this number will be divided into 60%train-20%val-20%test - 1000 per network
+num_records: 2000 #this number will be divided into 60%train-20%val-20%test - 1000 per network
 chunk_limit: 120
 selected_snapshots: null
 verbose: false

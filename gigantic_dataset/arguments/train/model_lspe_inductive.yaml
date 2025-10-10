@@ -13,7 +13,7 @@ pe_config:
     pe_init: "rw"
     pe_dim: 20
     pe_task: supervised
-    aux_criterion: laplacian
+    aux_criterion: 'laplacian'
     aux_loss_alpha: 0.5
 
 lr: 0.00001
@@ -30,4 +30,4 @@ log_method: "wandb"
 project_name: gida_model_improved_train #it is not auto-change when you eval(.)
 save_path: '' # make it empty to auto-gen in a first training
 log_per_epoch: 1
-run_prefix: 'lspe_inductive-new'  # to distinguish two wandb runs
+run_prefix: 'lspe_inductive'  # to distinguish two wandb runs
