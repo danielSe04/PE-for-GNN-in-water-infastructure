@@ -1,4 +1,4 @@
-# 2025-BSC-s5202841-Daniel-Seidel
+# Comparing Generic and Geo-Located Positional Encodings for Graph Neural Networks
 Bachelor thesis Daniel Seidel
 
 
